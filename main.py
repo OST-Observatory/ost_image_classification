@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from data_loader import FITSDataLoader
-from model import FITSClassifier
+from model import MultiModalClassifier
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
 
@@ -28,7 +28,7 @@ def main():
     
     # Initialize and train model
     print("Initializing model...")
-    model = FITSClassifier(input_shape=(*target_size, 1), num_classes=num_classes)
+    model = MultiModalClassifier(input_shape=(*target_size, 1), num_classes=num_classes)
     
     print("Training model...")
     history = model.train(
@@ -40,7 +40,7 @@ def main():
     
     # Save model
     print("Saving model...")
-    model.save('fits_classifier.h5')
+    model.save('multimodal_classifier.keras')
     
     # Evaluate model
     print("Evaluating model...")

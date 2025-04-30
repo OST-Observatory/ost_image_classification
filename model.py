@@ -2,7 +2,7 @@ import tensorflow as tf
 from tensorflow.keras import layers, models
 import numpy as np
 
-class FITSClassifier:
+class MultiModalClassifier:
     def __init__(self, input_shape=(256, 256, 1), num_classes=10):
         self.input_shape = input_shape
         self.num_classes = num_classes
@@ -131,7 +131,7 @@ class FITSClassifier:
         return self.model.predict([images, features, confidences])
     
     def save(self, path):
-        self.model.save(path)
+        self.model.save(path, save_format='keras')
     
     def load(self, path):
         self.model = models.load_model(path) 
