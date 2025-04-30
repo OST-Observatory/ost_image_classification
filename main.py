@@ -4,6 +4,14 @@ from data_loader import FITSDataLoader
 from model import MultiModalClassifier
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
+import logging
+
+# Configure TensorFlow logging
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # 0=all, 1=no INFO, 2=no INFO/WARN, 3=no INFO/WARN/ERROR
+logging.getLogger('tensorflow').setLevel(logging.ERROR)
+
+# Disable CUDA warnings
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 def main():
     # Configuration
