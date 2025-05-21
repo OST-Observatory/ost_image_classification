@@ -46,9 +46,12 @@ def main():
         batch_size=32
     )
     
-    # Save model
+    # Save the model
     print("Saving model...")
-    model.save('multimodal_classifier.keras')
+    model_path = 'multimodal_classifier.keras'
+    model.save(model_path)
+    
+    print("\nTraining completed. Model saved to:", model_path)
     
     # Evaluate model
     print("Evaluating model...")
