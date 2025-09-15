@@ -295,8 +295,16 @@ class FITSDataLoader:
             else:
                 raise ValueError(f"Unsupported image shape: {image.shape}")
             
-            # Normalize the image
-            image = (image - np.min(image)) / (np.max(image) - np.min(image))
+            # Normalize the image with numerical stability
+            min_val = np.min(image)
+            max_val = np.max(image)
+            denom = max_val - min_val
+            if not np.isfinite(denom) or denom < 1e-8:
+                # Avoid division by zero: return a zero image of same shape
+                image = np.zeros_like(image, dtype=np.float32)
+            else:
+                image = (image - min_val) / denom
+                image = np.clip(image, 0.0, 1.0)
             
             if image.shape[-1] > 3:
                 image = image[..., :3]
@@ -305,6 +313,11 @@ class FITSDataLoader:
             image = np.expand_dims(image, axis=0)
             image = tf.image.resize(image, self.target_size)
             image = image[0]
+            # Ensure numpy float32 array
+            if hasattr(image, 'numpy'):
+                image = image.numpy().astype(np.float32)
+            else:
+                image = np.array(image, dtype=np.float32)
             
             return image, image_stats
             

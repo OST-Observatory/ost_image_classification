@@ -1,0 +1,344 @@
+* python main.py --epochs 30 --batch_size 32 --lr_schedule constant --initial_lr 1e-3
+
+    Training:
+        Epoch 1/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 0s 2s/step - accuracy: 0.2644 - loss: 2.00772025-09-10 15:14:56.166057: W external/local_xla/xla/tsl/framework/cpu_allocator_impl.cc:83] Allocation of 1443540000 exceeds
+        10% of free system memory.
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 896s 2s/step - accuracy: 0.2644 - loss: 2.0069 - val_accuracy: 0.1212 - val_loss: 2.3117 - learning_rate: 0.0010
+        Epoch 2/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 920s 2s/step - accuracy: 0.3336 - loss: 1.3939 - val_accuracy: 0.6174 - val_loss: 1.3284 - learning_rate: 0.0010
+        Epoch 3/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 902s 2s/step - accuracy: 0.4255 - loss: 1.1825 - val_accuracy: 0.7091 - val_loss: 1.2567 - learning_rate: 0.0010
+        Epoch 4/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 886s 2s/step - accuracy: 0.5178 - loss: 0.9889 - val_accuracy: 0.7332 - val_loss: 1.0462 - learning_rate: 0.0010
+        Epoch 5/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 878s 2s/step - accuracy: 0.6137 - loss: 0.9336 - val_accuracy: 0.7206 - val_loss: 0.9098 - learning_rate: 0.0010
+        Epoch 6/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 880s 2s/step - accuracy: 0.6585 - loss: 0.8295 - val_accuracy: 0.7600 - val_loss: 0.8283 - learning_rate: 0.0010
+        Epoch 7/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 884s 2s/step - accuracy: 0.7046 - loss: 0.7389 - val_accuracy: 0.7536 - val_loss: 0.9745 - learning_rate: 0.0010
+        Epoch 8/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 881s 2s/step - accuracy: 0.7205 - loss: 0.7822 - val_accuracy: 0.8269 - val_loss: 0.8328 - learning_rate: 0.0010
+        Epoch 9/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 894s 2s/step - accuracy: 0.7462 - loss: 0.7476 - val_accuracy: 0.4002 - val_loss: 3.4016 - learning_rate: 0.0010
+        Epoch 10/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 890s 2s/step - accuracy: 0.7662 - loss: 0.7300 - val_accuracy: 0.4817 - val_loss: 2.0893 - learning_rate: 0.0010
+        Epoch 11/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 883s 2s/step - accuracy: 0.7811 - loss: 0.6749 - val_accuracy: 0.9403 - val_loss: 0.5588 - learning_rate: 0.0010
+        Epoch 12/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 887s 2s/step - accuracy: 0.8192 - loss: 0.6289 - val_accuracy: 0.8493 - val_loss: 0.7803 - learning_rate: 0.0010
+        Epoch 13/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 882s 2s/step - accuracy: 0.8185 - loss: 0.6469 - val_accuracy: 0.4362 - val_loss: 3.9177 - learning_rate: 0.0010
+        Epoch 14/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 880s 2s/step - accuracy: 0.8345 - loss: 0.5965 - val_accuracy: 0.8106 - val_loss: 0.7173 - learning_rate: 0.0010
+        Epoch 15/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 880s 2s/step - accuracy: 0.8120 - loss: 0.6102 - val_accuracy: 0.9294 - val_loss: 0.6104 - learning_rate: 0.0010
+        Epoch 16/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 873s 2s/step - accuracy: 0.8478 - loss: 0.5914 - val_accuracy: 0.9253 - val_loss: 0.5726 - learning_rate: 0.0010
+        Epoch 17/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 883s 2s/step - accuracy: 0.8649 - loss: 0.5951 - val_accuracy: 0.9437 - val_loss: 0.5328 - learning_rate: 2.0000e-04
+        Epoch 18/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 887s 2s/step - accuracy: 0.8701 - loss: 0.5254 - val_accuracy: 0.9423 - val_loss: 0.5364 - learning_rate: 2.0000e-04
+        Epoch 19/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 886s 2s/step - accuracy: 0.8804 - loss: 0.5457 - val_accuracy: 0.9484 - val_loss: 0.5237 - learning_rate: 2.0000e-04
+        Epoch 20/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 876s 2s/step - accuracy: 0.8802 - loss: 0.5186 - val_accuracy: 0.9453 - val_loss: 0.5194 - learning_rate: 2.0000e-04
+        Epoch 21/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 879s 2s/step - accuracy: 0.8789 - loss: 0.5168 - val_accuracy: 0.9413 - val_loss: 0.5235 - learning_rate: 2.0000e-04
+        Epoch 22/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 877s 2s/step - accuracy: 0.8934 - loss: 0.5166 - val_accuracy: 0.9413 - val_loss: 0.5286 - learning_rate: 2.0000e-04
+        Epoch 23/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 873s 2s/step - accuracy: 0.8758 - loss: 0.5149 - val_accuracy: 0.9433 - val_loss: 0.5144 - learning_rate: 2.0000e-04
+        Epoch 24/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 872s 2s/step - accuracy: 0.8949 - loss: 0.4942 - val_accuracy: 0.9386 - val_loss: 0.5422 - learning_rate: 2.0000e-04
+        Epoch 25/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 871s 2s/step - accuracy: 0.8928 - loss: 0.4816 - val_accuracy: 0.9124 - val_loss: 0.5750 - learning_rate: 2.0000e-04
+        Epoch 26/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 871s 2s/step - accuracy: 0.8906 - loss: 0.4716 - val_accuracy: 0.9440 - val_loss: 0.5428 - learning_rate: 2.0000e-04
+        Epoch 27/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 872s 2s/step - accuracy: 0.9027 - loss: 0.4822 - val_accuracy: 0.9416 - val_loss: 0.5028 - learning_rate: 2.0000e-04
+        Epoch 28/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 872s 2s/step - accuracy: 0.8928 - loss: 0.5009 - val_accuracy: 0.9331 - val_loss: 0.5303 - learning_rate: 2.0000e-04
+        Epoch 29/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 873s 2s/step - accuracy: 0.8861 - loss: 0.4965 - val_accuracy: 0.9338 - val_loss: 0.5306 - learning_rate: 2.0000e-04
+        Epoch 30/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 872s 2s/step - accuracy: 0.9029 - loss: 0.4972 - val_accuracy: 0.9504 - val_loss: 0.5057 - learning_rate: 2.0000e-04
+        Saving model...
+        WARNING:absl:The `save_format` argument is deprecated in Keras 3. We recommend removing this argument as it can be inferred from the file path. Received: save_format=keras
+
+        Training completed. Model saved to: multimodal_classifier.keras
+        Saved feature scaler to: multimodal_classifier_feat_scaler.npz
+        Evaluating model...
+        2025-09-10 22:21:45.291828: W external/local_xla/xla/tsl/framework/cpu_allocator_impl.cc:83] Allocation of 1443540000 exceeds 10% of free system memory.
+        93/93 ━━━━━━━━━━━━━━━━━━━━ 26s 276ms/step
+        Test accuracy: 0.9416
+
+    Evaluation:
+        Overall accuracy: 0.8218
+
+        Per-class accuracy:
+        bias: 0.8750
+        darks: 0.8208
+        flats: 0.9377
+        deep_sky: 0.7869
+        flat_dados: 0.8246
+        spectrum_dados: 0.9130
+        wavelength_calibration_dados: 0.9020
+        flat_baches: 0.8774
+        spectrum_baches: 0.5758
+        wavelength_calibration_baches: 0.9750
+        einsteinturm: 1.0000
+
+        Classification Report:
+                                    precision    recall  f1-score   support
+
+                                bias       0.88      0.88      0.88        40
+                                darks       0.62      0.82      0.71       759
+                                flats       0.99      0.94      0.96       674
+                            deep_sky       0.95      0.79      0.86      3177
+                        flat_dados       0.94      0.82      0.88        57
+                    spectrum_dados       0.81      0.91      0.86        69
+        wavelength_calibration_dados       0.12      0.90      0.21        51
+                        flat_baches       1.00      0.88      0.93       155
+                    spectrum_baches       0.50      0.58      0.54        33
+        wavelength_calibration_baches       0.83      0.97      0.90        40
+                        einsteinturm       0.96      1.00      0.98        81
+
+                            accuracy                           0.82      5136
+                            macro avg       0.78      0.86      0.79      5136
+                        weighted avg       0.89      0.82      0.85      5136
+
+
+
+* python main.py --loss_strategy focal_loss --epochs 30 --batch_size 32 --lr_schedule constant --initial_lr 1e-3
+
+    Training:
+        Epoch 1/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 0s 2s/step - accuracy: 0.1884 - loss: 0.23532025-09-05 13:27:56.888024: W external/local_xla/xla/tsl/framework/cp
+        u_allocator_impl.cc:83] Allocation of 1443540000 exceeds 10% of free system memory.
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 878s 2s/step - accuracy: 0.1885 - loss: 0.2352 - val_accuracy: 0.1113 - val_loss: 0.2599 - learning_rate: 0.0010
+        Epoch 2/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 877s 2s/step - accuracy: 0.3411 - loss: 0.1041 - val_accuracy: 0.2519 - val_loss: 0.1287 - learning_rate: 0.0010
+        Epoch 3/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 866s 2s/step - accuracy: 0.4061 - loss: 0.0859 - val_accuracy: 0.2783 - val_loss: 0.5114 - learning_rate: 0.0010
+        Epoch 4/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 867s 2s/step - accuracy: 0.4751 - loss: 0.0829 - val_accuracy: 0.3792 - val_loss: 0.0689 - learning_rate: 0.0010
+        Epoch 5/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 869s 2s/step - accuracy: 0.5563 - loss: 0.0613 - val_accuracy: 0.6911 - val_loss: 0.0487 - learning_rate: 0.0010
+        Epoch 6/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 869s 2s/step - accuracy: 0.6143 - loss: 0.0580 - val_accuracy: 0.6480 - val_loss: 0.0350 - learning_rate: 0.0010
+        Epoch 7/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 865s 2s/step - accuracy: 0.6038 - loss: 0.0528 - val_accuracy: 0.6446 - val_loss: 0.0579 - learning_rate: 0.0010
+        Epoch 8/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 871s 2s/step - accuracy: 0.6015 - loss: 0.0577 - val_accuracy: 0.7688 - val_loss: 0.0312 - learning_rate: 0.0010
+        Epoch 9/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 868s 2s/step - accuracy: 0.6368 - loss: 0.0475 - val_accuracy: 0.7413 - val_loss: 0.0319 - learning_rate: 0.0010
+        Epoch 10/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 868s 2s/step - accuracy: 0.6849 - loss: 0.0365 - val_accuracy: 0.6877 - val_loss: 0.0553 - learning_rate: 0.0010
+        Epoch 11/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 868s 2s/step - accuracy: 0.6948 - loss: 0.0399 - val_accuracy: 0.7284 - val_loss: 0.0601 - learning_rate: 0.0010
+        Epoch 12/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 866s 2s/step - accuracy: 0.7143 - loss: 0.0384 - val_accuracy: 0.6500 - val_loss: 0.0620 - learning_rate: 0.0010
+        Epoch 13/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 867s 2s/step - accuracy: 0.7007 - loss: 0.0388 - val_accuracy: 0.8272 - val_loss: 0.0257 - learning_rate: 0.0010
+        Epoch 14/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 867s 2s/step - accuracy: 0.7119 - loss: 0.0387 - val_accuracy: 0.7261 - val_loss: 0.0246 - learning_rate: 0.0010
+        Epoch 15/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 867s 2s/step - accuracy: 0.7031 - loss: 0.0341 - val_accuracy: 0.8198 - val_loss: 0.0257 - learning_rate: 0.0010
+        Epoch 16/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 865s 2s/step - accuracy: 0.7239 - loss: 0.0418 - val_accuracy: 0.9121 - val_loss: 0.0258 - learning_rate: 0.0010
+        Epoch 17/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 867s 2s/step - accuracy: 0.7521 - loss: 0.0303 - val_accuracy: 0.8866 - val_loss: 0.0213 - learning_rate: 0.0010
+        Epoch 18/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 866s 2s/step - accuracy: 0.7643 - loss: 0.0334 - val_accuracy: 0.8870 - val_loss: 0.0208 - learning_rate: 0.0010
+        Epoch 19/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 869s 2s/step - accuracy: 0.7691 - loss: 0.0262 - val_accuracy: 0.7977 - val_loss: 0.0386 - learning_rate: 0.0010
+        Epoch 20/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 867s 2s/step - accuracy: 0.7857 - loss: 0.0317 - val_accuracy: 0.7838 - val_loss: 0.0357 - learning_rate: 0.0010
+        Epoch 21/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 866s 2s/step - accuracy: 0.7587 - loss: 0.0360 - val_accuracy: 0.8259 - val_loss: 0.0383 - learning_rate: 0.0010
+        Epoch 22/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 865s 2s/step - accuracy: 0.7626 - loss: 0.0262 - val_accuracy: 0.8798 - val_loss: 0.0206 - learning_rate: 0.0010
+        Epoch 23/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 866s 2s/step - accuracy: 0.7535 - loss: 0.0243 - val_accuracy: 0.9168 - val_loss: 0.0165 - learning_rate: 0.0010
+        Epoch 24/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 866s 2s/step - accuracy: 0.7753 - loss: 0.0267 - val_accuracy: 0.8741 - val_loss: 0.0195 - learning_rate: 0.0010
+        Epoch 25/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 868s 2s/step - accuracy: 0.7649 - loss: 0.0268 - val_accuracy: 0.9413 - val_loss: 0.0152 - learning_rate: 0.0010
+        Epoch 26/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 868s 2s/step - accuracy: 0.7842 - loss: 0.0249 - val_accuracy: 0.9165 - val_loss: 0.0182 - learning_rate: 0.0010
+        Epoch 27/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 868s 2s/step - accuracy: 0.7895 - loss: 0.0253 - val_accuracy: 0.9250 - val_loss: 0.0153 - learning_rate: 0.0010
+        Epoch 28/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 867s 2s/step - accuracy: 0.8024 - loss: 0.0220 - val_accuracy: 0.8181 - val_loss: 0.0161 - learning_rate: 0.0010
+        Epoch 29/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 867s 2s/step - accuracy: 0.7678 - loss: 0.0249 - val_accuracy: 0.8408 - val_loss: 0.0306 - learning_rate: 0.0010
+        Epoch 30/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 874s 2s/step - accuracy: 0.7809 - loss: 0.0208 - val_accuracy: 0.9206 - val_loss: 0.0217 - learning_rate: 0.0010
+        Saving model...
+        WARNING:absl:The `save_format` argument is deprecated in Keras 3. We recommend removing this argument as it can be inferred from the file path
+        . Received: save_format=keras
+
+        Training completed. Model saved to: multimodal_classifier.keras
+        Saved feature scaler to: multimodal_classifier_feat_scaler.npz
+        Evaluating model...
+        2025-09-05 20:27:50.784474: W external/local_xla/xla/tsl/framework/cpu_allocator_impl.cc:83] Allocation of 1443540000 exceeds 10% of free syst
+        em memory.
+        93/93 ━━━━━━━━━━━━━━━━━━━━ 26s 275ms/step
+        Test accuracy: 0.9413
+
+
+    Evaluation:
+
+        Overall accuracy: 0.8154
+
+        Per-class accuracy:
+        bias: 0.9000
+        darks: 0.7971
+        flats: 0.9288
+        deep_sky: 0.7812
+        flat_dados: 0.9298
+        spectrum_dados: 0.6957
+        wavelength_calibration_dados: 0.9020
+        flat_baches: 0.9613
+        spectrum_baches: 0.6667
+        wavelength_calibration_baches: 1.0000
+        einsteinturm: 1.0000
+
+        Classification Report:
+                                    precision    recall  f1-score   support
+
+                                bias       0.86      0.90      0.88        40
+                                darks       0.63      0.80      0.71       759
+                                flats       0.98      0.93      0.95       674
+                            deep_sky       0.93      0.78      0.85      3177
+                        flat_dados       0.98      0.93      0.95        57
+                    spectrum_dados       0.80      0.70      0.74        69
+        wavelength_calibration_dados       0.11      0.90      0.19        51
+                        flat_baches       1.00      0.96      0.98       155
+                    spectrum_baches       0.76      0.67      0.71        33
+        wavelength_calibration_baches       0.95      1.00      0.98        40
+                        einsteinturm       1.00      1.00      1.00        81
+
+                            accuracy                           0.82      5136
+                            macro avg       0.82      0.87      0.81      5136
+                        weighted avg       0.89      0.82      0.84      5136
+
+
+
+* python main.py --loss_strategy class_weights --epochs 30 --batch_size 32 --lr_schedule constant --initial_lr 1e-3
+
+    Training:
+        Processing completed. Successfully processed 14730 of 14730 files.
+        Initializing model...
+        Training model...
+        2025-09-09 12:27:50.152913: W external/local_xla/xla/tsl/framework/cpu_allocator_impl.cc:83] Allocation of 5774160000 exceeds 10% of free syst
+        em memory.
+        Epoch 1/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 0s 2s/step - accuracy: 0.2145 - loss: 2.15082025-09-09 12:42:30.298732: W external/local_xla/xla/tsl/framework/cp
+        u_allocator_impl.cc:83] Allocation of 1443540000 exceeds 10% of free system memory.
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 897s 2s/step - accuracy: 0.2145 - loss: 2.1498 - val_accuracy: 0.1147 - val_loss: 2.3755 - learning_rate: 0.0010
+        Epoch 2/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 891s 2s/step - accuracy: 0.2896 - loss: 1.3836 - val_accuracy: 0.4172 - val_loss: 1.4851 - learning_rate: 0.0010
+        Epoch 3/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 889s 2s/step - accuracy: 0.4170 - loss: 1.1319 - val_accuracy: 0.4871 - val_loss: 1.3192 - learning_rate: 0.0010
+        Epoch 4/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 884s 2s/step - accuracy: 0.5134 - loss: 1.0414 - val_accuracy: 0.6772 - val_loss: 1.1885 - learning_rate: 0.0010
+        Epoch 5/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 878s 2s/step - accuracy: 0.5241 - loss: 0.9472 - val_accuracy: 0.7926 - val_loss: 0.9235 - learning_rate: 0.0010
+        Epoch 6/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 876s 2s/step - accuracy: 0.5873 - loss: 0.8983 - val_accuracy: 0.6772 - val_loss: 1.1162 - learning_rate: 0.0010
+        Epoch 7/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 882s 2s/step - accuracy: 0.5859 - loss: 0.8512 - val_accuracy: 0.7614 - val_loss: 0.9293 - learning_rate: 0.0010
+        Epoch 8/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 886s 2s/step - accuracy: 0.6381 - loss: 0.8433 - val_accuracy: 0.7916 - val_loss: 0.8072 - learning_rate: 0.0010
+        Epoch 9/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 882s 2s/step - accuracy: 0.6914 - loss: 0.7625 - val_accuracy: 0.8313 - val_loss: 0.7873 - learning_rate: 0.0010
+        Epoch 10/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 881s 2s/step - accuracy: 0.7295 - loss: 0.6803 - val_accuracy: 0.8741 - val_loss: 0.7126 - learning_rate: 0.0010
+        Epoch 11/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 885s 2s/step - accuracy: 0.7348 - loss: 0.6798 - val_accuracy: 0.8035 - val_loss: 0.7800 - learning_rate: 0.0010
+        Epoch 12/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 886s 2s/step - accuracy: 0.7641 - loss: 0.7104 - val_accuracy: 0.5883 - val_loss: 1.3008 - learning_rate: 0.0010
+        Epoch 13/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 886s 2s/step - accuracy: 0.8010 - loss: 0.6215 - val_accuracy: 0.8676 - val_loss: 0.6904 - learning_rate: 0.0010
+        Epoch 14/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 876s 2s/step - accuracy: 0.8014 - loss: 0.6148 - val_accuracy: 0.9202 - val_loss: 0.6745 - learning_rate: 0.0010
+        Epoch 15/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 883s 2s/step - accuracy: 0.8228 - loss: 0.6159 - val_accuracy: 0.9124 - val_loss: 0.6244 - learning_rate: 0.0010
+        Epoch 16/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 885s 2s/step - accuracy: 0.8337 - loss: 0.6152 - val_accuracy: 0.9155 - val_loss: 0.7020 - learning_rate: 0.0010
+        Epoch 17/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 878s 2s/step - accuracy: 0.8296 - loss: 0.5809 - val_accuracy: 0.7203 - val_loss: 1.0169 - learning_rate: 0.0010
+        Epoch 18/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 887s 2s/step - accuracy: 0.8458 - loss: 0.6079 - val_accuracy: 0.9199 - val_loss: 0.5912 - learning_rate: 0.0010
+        Epoch 19/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 888s 2s/step - accuracy: 0.8599 - loss: 0.5859 - val_accuracy: 0.9426 - val_loss: 0.5529 - learning_rate: 0.0010
+        Epoch 20/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 879s 2s/step - accuracy: 0.8564 - loss: 0.5848 - val_accuracy: 0.9355 - val_loss: 0.5854 - learning_rate: 0.0010
+        Epoch 21/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 881s 2s/step - accuracy: 0.8494 - loss: 0.5856 - val_accuracy: 0.9447 - val_loss: 0.5350 - learning_rate: 0.0010
+        Epoch 22/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 882s 2s/step - accuracy: 0.8527 - loss: 0.5475 - val_accuracy: 0.9196 - val_loss: 0.5552 - learning_rate: 0.0010
+        Epoch 23/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 886s 2s/step - accuracy: 0.8748 - loss: 0.5498 - val_accuracy: 0.9477 - val_loss: 0.5201 - learning_rate: 0.0010
+        Epoch 24/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 887s 2s/step - accuracy: 0.8505 - loss: 0.5584 - val_accuracy: 0.4936 - val_loss: 1.7202 - learning_rate: 0.0010
+        Epoch 25/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 877s 2s/step - accuracy: 0.8725 - loss: 0.5672 - val_accuracy: 0.9457 - val_loss: 0.5150 - learning_rate: 0.0010
+        Epoch 26/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 879s 2s/step - accuracy: 0.8789 - loss: 0.5778 - val_accuracy: 0.9487 - val_loss: 0.5045 - learning_rate: 0.0010
+        Epoch 27/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 875s 2s/step - accuracy: 0.8885 - loss: 0.5076 - val_accuracy: 0.9314 - val_loss: 0.5568 - learning_rate: 0.0010
+        Epoch 28/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 881s 2s/step - accuracy: 0.8796 - loss: 0.5115 - val_accuracy: 0.9494 - val_loss: 0.4951 - learning_rate: 0.0010
+        Epoch 29/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 888s 2s/step - accuracy: 0.9012 - loss: 0.4771 - val_accuracy: 0.9443 - val_loss: 0.5180 - learning_rate: 0.0010
+        Epoch 30/30
+        369/369 ━━━━━━━━━━━━━━━━━━━━ 885s 2s/step - accuracy: 0.8720 - loss: 0.5113 - val_accuracy: 0.9447 - val_loss: 0.5007 - learning_rate: 0.0010
+        Saving model...
+        WARNING:absl:The `save_format` argument is deprecated in Keras 3. We recommend removing this argument as it can be inferred from the file path
+        . Received: save_format=keras
+
+        Training completed. Model saved to: multimodal_classifier.keras
+        Saved feature scaler to: multimodal_classifier_feat_scaler.npz
+        Evaluating model...
+        2025-09-09 19:49:39.687886: W external/local_xla/xla/tsl/framework/cpu_allocator_impl.cc:83] Allocation of 1443540000 exceeds 10% of free syst
+        em memory.
+        93/93 ━━━━━━━━━━━━━━━━━━━━ 26s 276ms/step
+        Test accuracy: 0.9494
+
+    Evaluation:
+        Overall accuracy: 0.8505
+
+        Per-class accuracy:
+        bias: 0.8750
+        darks: 0.8366
+        flats: 0.9332
+        deep_sky: 0.8250
+        flat_dados: 0.9649
+        spectrum_dados: 0.9275
+        wavelength_calibration_dados: 1.0000
+        flat_baches: 0.8903
+        spectrum_baches: 0.5758
+        wavelength_calibration_baches: 1.0000
+        einsteinturm: 1.0000
+
+        Classification Report:
+                                    precision    recall  f1-score   support
+
+                                bias       1.00      0.88      0.93        40
+                                darks       0.56      0.84      0.67       759
+                                flats       1.00      0.93      0.96       674
+                            deep_sky       0.95      0.82      0.88      3177
+                        flat_dados       0.98      0.96      0.97        57
+                    spectrum_dados       0.81      0.93      0.86        69
+        wavelength_calibration_dados       0.33      1.00      0.50        51
+                        flat_baches       1.00      0.89      0.94       155
+                    spectrum_baches       0.53      0.58      0.55        33
+        wavelength_calibration_baches       1.00      1.00      1.00        40
+                        einsteinturm       1.00      1.00      1.00        81
+
+                            accuracy                           0.85      5136
+                            macro avg       0.83      0.89      0.84      5136
+                        weighted avg       0.89      0.85      0.86      5136

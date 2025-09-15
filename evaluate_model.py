@@ -1,12 +1,16 @@
 import os
+import json
 import numpy as np
 from data_loader import FITSDataLoader
 from model import MultiModalClassifier
 import tensorflow as tf
-from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.metrics import classification_report, confusion_matrix, precision_recall_curve
+import matplotlib
+matplotlib.use("Agg")  # Headless Backend
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
+import argparse
 
 def plot_confusion_matrix(y_true, y_pred, classes):
     """Plot confusion matrix with detailed analysis."""
@@ -86,7 +90,96 @@ def analyze_feature_importance(model, features, labels, feature_names):
     print("\nTop 10 Most Important Features:")
     print(importance_df.head(10))
 
-def evaluate_model(model_path, data_dir, target_size=(350, 350)):
+
+def parse_thresholds_arg(thresholds_arg, num_classes):
+    """Parse thresholds argument: scalar, comma-separated list, or JSON file path."""
+    if thresholds_arg is None:
+        return None
+    # Try float scalar
+    try:
+        scalar = float(thresholds_arg)
+        return np.full(num_classes, scalar, dtype=np.float32)
+    except ValueError:
+        pass
+    # Try comma-separated list
+    if "," in thresholds_arg:
+        parts = [p.strip() for p in thresholds_arg.split(",")]
+        arr = np.array([float(p) for p in parts], dtype=np.float32)
+        if arr.size != num_classes:
+            raise ValueError(f"Threshold list length {arr.size} does not match num_classes {num_classes}")
+        return arr
+    # Try JSON file
+    if os.path.exists(thresholds_arg):
+        with open(thresholds_arg, 'r') as f:
+            data = json.load(f)
+        # Accept list or dict mapping class names to threshold
+        if isinstance(data, list):
+            arr = np.array([float(x) for x in data], dtype=np.float32)
+            if arr.size != num_classes:
+                raise ValueError(f"Threshold list length {arr.size} does not match num_classes {num_classes}")
+            return arr
+        elif isinstance(data, dict):
+            # sort by class index inferred from provided mapping (name->idx may be order of FITSDataLoader)
+            return data  # handle later when class order is known
+    raise ValueError("Could not parse --thresholds. Provide scalar, comma list, or JSON path.")
+
+
+def compute_pr_curves_per_class(y_true_int, y_proba, class_names, out_dir="."):
+    """Compute PR curves and F1 for each class and save plots. Return dict of suggestions by max F1."""
+    os.makedirs(out_dir, exist_ok=True)
+    num_classes = y_proba.shape[1]
+    suggestions = {}
+    for c in range(num_classes):
+        y_true_bin = (y_true_int == c).astype(np.int32)
+        precision, recall, thresholds = precision_recall_curve(y_true_bin, y_proba[:, c])
+        # thresholds length = len(precision)-1
+        # compute F1 for each threshold-aligned point
+        eps = 1e-8
+        f1 = (2 * precision[:-1] * recall[:-1]) / np.maximum(precision[:-1] + recall[:-1], eps)
+        if f1.size > 0:
+            best_idx = int(np.argmax(f1))
+            best_thr = float(thresholds[best_idx])
+            suggestions[class_names[c]] = {
+                'best_f1_threshold': best_thr,
+                'best_f1': float(f1[best_idx]),
+                'precision_at_best': float(precision[best_idx]),
+                'recall_at_best': float(recall[best_idx]),
+            }
+        # Plot PR curve
+        plt.figure(figsize=(6, 5))
+        plt.plot(recall, precision, label=f"PR {class_names[c]}")
+        plt.xlabel('Recall')
+        plt.ylabel('Precision')
+        plt.title(f'Precision-Recall: {class_names[c]}')
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig(os.path.join(out_dir, f'pr_curve_{class_names[c]}.png'))
+        plt.close()
+    return suggestions
+
+
+def apply_thresholds_to_predictions(proba, thresholds, strategy="gate"):
+    """Apply per-class thresholds to probability predictions.
+    strategy 'gate': choose highest class that passes its threshold; if none, fallback to argmax.
+    """
+    num_samples, num_classes = proba.shape
+    thresholds = np.asarray(thresholds, dtype=np.float32).reshape((1, num_classes))
+    # mask of classes that pass
+    pass_mask = proba >= thresholds
+    # pick highest prob among passing classes
+    top_idx = np.argmax(proba, axis=1)
+    gated_idx = []
+    for i in range(num_samples):
+        passing = np.where(pass_mask[i])[0]
+        if passing.size > 0:
+            # among passing, pick argmax
+            j = passing[np.argmax(proba[i, passing])]
+            gated_idx.append(int(j))
+        else:
+            gated_idx.append(int(top_idx[i]))
+    return np.array(gated_idx, dtype=np.int32)
+
+def evaluate_model(model_path, data_dir, target_size=(350, 350), thresholds=None, auto_threshold=None, target_precision=None, pr_out_dir=None, save_thresholds_path=None):
     # Initialize data loader
     data_loader = FITSDataLoader(target_size)
     
@@ -96,48 +189,133 @@ def evaluate_model(model_path, data_dir, target_size=(350, 350)):
     
     # Convert labels to one-hot encoding
     num_classes = len(data_loader.classes)
-    labels = tf.keras.utils.to_categorical(labels, num_classes=num_classes)
+    labels_onehot = tf.keras.utils.to_categorical(labels, num_classes=num_classes)
+    labels_int = np.asarray(labels, dtype=np.int32)
     
     # Load model
     print("Loading model...")
     model = MultiModalClassifier(input_shape=(*target_size, 1), num_classes=num_classes)
     model.load(model_path)
     
+    # Apply same feature standardization as in training if available
+    import os
+    scaler_path = os.path.splitext(model_path)[0] + "_feat_scaler.npz"
+    if os.path.exists(scaler_path):
+        scaler = np.load(scaler_path)
+        feat_mean = scaler.get('mean')
+        feat_std = scaler.get('std')
+        if feat_mean is not None and feat_std is not None:
+            feat_std = np.where(feat_std < 1e-6, 1.0, feat_std)
+            features = (features - feat_mean) / feat_std
+
     # Make predictions
     print("Making predictions...")
     predictions = model.predict(images, features, confidences)
+    proba = np.asarray(predictions, dtype=np.float32)
+
+    # Handle thresholds argument that may be a dict with class names
+    class_names = list(data_loader.classes.keys())
+    if isinstance(thresholds, dict):
+        thr_arr = np.zeros(num_classes, dtype=np.float32)
+        for name, idx in data_loader.classes.items():
+            thr_arr[idx] = float(thresholds.get(name, 0.5))
+        thresholds = thr_arr
+
+    # Auto thresholds via PR curves
+    suggested = None
+    if auto_threshold in {"max_f1", "target_precision"} or pr_out_dir is not None:
+        suggested = compute_pr_curves_per_class(labels_int, proba, class_names, out_dir=(pr_out_dir or '.'))
+        if auto_threshold == "max_f1" and suggested:
+            thresholds = np.array([suggested[name]['best_f1_threshold'] for name in class_names], dtype=np.float32)
+        elif auto_threshold == "target_precision" and suggested and target_precision is not None:
+            # recompute thresholds meeting target precision per class
+            thrs = []
+            for c, name in enumerate(class_names):
+                y_true_bin = (labels_int == c).astype(np.int32)
+                precision, recall, thr = precision_recall_curve(y_true_bin, proba[:, c])
+                # find first threshold where precision >= target, highest recall among those
+                candidates = np.where(precision[:-1] >= float(target_precision))[0]
+                if candidates.size > 0:
+                    best_idx = int(candidates[np.argmax(recall[:-1][candidates])])
+                    thrs.append(float(thr[best_idx]))
+                else:
+                    # fallback to max F1
+                    f1 = (2 * precision[:-1] * recall[:-1]) / np.maximum(precision[:-1] + recall[:-1], 1e-8)
+                    best_idx = int(np.argmax(f1)) if f1.size > 0 else 0
+                    thrs.append(float(thr[best_idx]) if thr.size > 0 else 0.5)
+            thresholds = np.array(thrs, dtype=np.float32)
+
+    # Save suggested thresholds if requested
+    if save_thresholds_path and suggested is not None:
+        with open(save_thresholds_path, 'w') as f:
+            json.dump(suggested, f, indent=2)
+        print(f"Saved threshold suggestions to: {save_thresholds_path}")
     
-    # Calculate accuracy
-    accuracy = np.mean(np.argmax(predictions, axis=1) == np.argmax(labels, axis=1))
-    print(f"\nOverall accuracy: {accuracy:.4f}")
+    # Calculate accuracy with/without thresholds
+    y_pred_argmax = np.argmax(proba, axis=1)
+    y_true_argmax = np.argmax(labels_onehot, axis=1)
+    base_accuracy = np.mean(y_pred_argmax == y_true_argmax)
+    print(f"\nOverall accuracy (argmax): {base_accuracy:.4f}")
+    if thresholds is not None:
+        y_pred_thresh = apply_thresholds_to_predictions(proba, thresholds, strategy="gate")
+        thr_accuracy = np.mean(y_pred_thresh == y_true_argmax)
+        print(f"Overall accuracy (thresholded): {thr_accuracy:.4f}")
+        y_pred_for_report = y_pred_thresh
+    else:
+        y_pred_for_report = y_pred_argmax
     
     # Calculate per-class accuracy
     print("\nPer-class accuracy:")
     for class_name, class_idx in data_loader.classes.items():
-        class_mask = np.argmax(labels, axis=1) == class_idx
+        class_mask = (y_true_argmax == class_idx)
         if np.any(class_mask):
-            class_accuracy = np.mean(
-                np.argmax(predictions[class_mask], axis=1) == 
-                np.argmax(labels[class_mask], axis=1)
-            )
+            class_accuracy = np.mean(y_pred_for_report[class_mask] == y_true_argmax[class_mask])
             print(f"{class_name}: {class_accuracy:.4f}")
         else:
             print(f"{class_name}: No samples available")
 
     # Calculate metrics
     print("\nClassification Report:")
-    print(classification_report(np.argmax(labels, axis=1), np.argmax(predictions, axis=1),
+    print(classification_report(y_true_argmax, y_pred_for_report,
                               target_names=list(data_loader.classes.keys())))
     
     # Plot confusion matrix with detailed analysis
-    plot_confusion_matrix(np.argmax(labels, axis=1), np.argmax(predictions, axis=1), 
+    plot_confusion_matrix(y_true_argmax, y_pred_for_report, 
                          list(data_loader.classes.keys()))
     
     # Analyze feature importance
     feature_names = [f"feature_{i}" for i in range(features.shape[1])]
-    analyze_feature_importance(model, features, np.argmax(labels, axis=1), feature_names)
+    analyze_feature_importance(model, features, y_true_argmax, feature_names)
 
 if __name__ == "__main__":
-    model_path = "multimodal_classifier.keras"
-    data_dir = "../image_classification_test_sample"
-    evaluate_model(model_path, data_dir) 
+    parser = argparse.ArgumentParser(description="Evaluate multimodal classifier with optional per-class thresholds and PR analysis")
+    parser.add_argument("--model_path", default="multimodal_classifier.keras")
+    parser.add_argument("--data_dir", default="../image_classification_test_sample")
+    parser.add_argument("--target_w", type=int, default=350)
+    parser.add_argument("--target_h", type=int, default=350)
+    parser.add_argument("--thresholds", type=str, default=None, help="Scalar, comma list, or JSON path (list or {class: thr})")
+    parser.add_argument("--auto_threshold", choices=[None, "max_f1", "target_precision"], default=None)
+    parser.add_argument("--target_precision", type=float, default=None, help="Target precision for auto_threshold=target_precision")
+    parser.add_argument("--pr_out_dir", type=str, default=None, help="Directory to save per-class PR curves")
+    parser.add_argument("--save_thresholds", type=str, default=None, help="Path to save suggested thresholds JSON")
+    args = parser.parse_args()
+
+    # Build target size
+    tsize = (args.target_h, args.target_w)
+
+    # Parse thresholds (may be np.ndarray, dict, or None)
+    thresholds = None
+    if args.thresholds is not None:
+        # We need num_classes to fully resolve dict/list; will pass through and resolve dict after data loader known inside evaluate_model
+        thresholds = args.thresholds
+
+    evaluate_model(
+        args.model_path,
+        args.data_dir,
+        target_size=tsize,
+        thresholds=parse_thresholds_arg(thresholds, num_classes=0) if (thresholds is not None and "," in thresholds) else thresholds,
+        auto_threshold=args.auto_threshold,
+        target_precision=args.target_precision,
+        pr_out_dir=args.pr_out_dir,
+        save_thresholds_path=args.save_thresholds,
+    )
