@@ -158,7 +158,7 @@ def compute_pr_curves_per_class(y_true_int, y_proba, class_names, out_dir="."):
     return suggestions
 
 
-def apply_thresholds_to_predictions(proba, thresholds, strategy="gate"):
+def apply_thresholds_to_predictions(proba, thresholds, strategy="gate", abstain=False, unknown_id=None):
     """Apply per-class thresholds to probability predictions.
     strategy 'gate': choose highest class that passes its threshold; if none, fallback to argmax.
     """
@@ -176,10 +176,15 @@ def apply_thresholds_to_predictions(proba, thresholds, strategy="gate"):
             j = passing[np.argmax(proba[i, passing])]
             gated_idx.append(int(j))
         else:
-            gated_idx.append(int(top_idx[i]))
+            if abstain:
+                # Unknown-ID defaults to last index if not provided
+                fallback_unknown = num_classes if unknown_id is None else int(unknown_id)
+                gated_idx.append(fallback_unknown)
+            else:
+                gated_idx.append(int(top_idx[i]))
     return np.array(gated_idx, dtype=np.int32)
 
-def evaluate_model(model_path, data_dir, target_size=(350, 350), thresholds=None, auto_threshold=None, target_precision=None, pr_out_dir=None, save_thresholds_path=None):
+def evaluate_model(model_path, data_dir, target_size=(350, 350), thresholds=None, auto_threshold=None, target_precision=None, pr_out_dir=None, save_thresholds_path=None, abstain_unknown=False, unknown_id=None, tta=False):
     # Initialize data loader
     data_loader = FITSDataLoader(target_size)
     
@@ -208,13 +213,24 @@ def evaluate_model(model_path, data_dir, target_size=(350, 350), thresholds=None
             feat_std = np.where(feat_std < 1e-6, 1.0, feat_std)
             features = (features - feat_mean) / feat_std
 
-    # Make predictions
+    # Make predictions (optionally with Test-Time Augmentation by flip averaging)
     print("Making predictions...")
-    predictions = model.predict(images, features, confidences)
-    proba = np.asarray(predictions, dtype=np.float32)
+    def _predict(images_np):
+        return np.asarray(model.predict(images_np, features, confidences), dtype=np.float32)
+    if not tta:
+        proba = _predict(images)
+    else:
+        # Horizontal and vertical flips; average probabilities
+        proba_list = []
+        proba_list.append(_predict(images))
+        proba_list.append(_predict(images[:, ::-1, :, :]))  # H flip
+        proba_list.append(_predict(images[:, :, ::-1, :]))  # V flip
+        proba = np.mean(np.stack(proba_list, axis=0), axis=0)
 
-    # Handle thresholds argument that may be a dict with class names
+    # Handle thresholds argument that may be a string (comma list or JSON path) or a dict
     class_names = list(data_loader.classes.keys())
+    if isinstance(thresholds, str):
+        thresholds = parse_thresholds_arg(thresholds, num_classes)
     if isinstance(thresholds, dict):
         thr_arr = np.zeros(num_classes, dtype=np.float32)
         for name, idx in data_loader.classes.items():
@@ -257,9 +273,21 @@ def evaluate_model(model_path, data_dir, target_size=(350, 350), thresholds=None
     base_accuracy = np.mean(y_pred_argmax == y_true_argmax)
     print(f"\nOverall accuracy (argmax): {base_accuracy:.4f}")
     if thresholds is not None:
-        y_pred_thresh = apply_thresholds_to_predictions(proba, thresholds, strategy="gate")
-        thr_accuracy = np.mean(y_pred_thresh == y_true_argmax)
-        print(f"Overall accuracy (thresholded): {thr_accuracy:.4f}")
+        y_pred_thresh = apply_thresholds_to_predictions(proba, thresholds, strategy="gate", abstain=abstain_unknown, unknown_id=unknown_id)
+        # Coverage & accuracy@coverage when abstaining
+        if abstain_unknown:
+            unk_id = (num_classes if unknown_id is None else int(unknown_id))
+            covered_mask = (y_pred_thresh != unk_id)
+            coverage = float(np.mean(covered_mask))
+            acc_at_cov = float(np.mean(y_pred_thresh[covered_mask] == y_true_argmax[covered_mask])) if np.any(covered_mask) else 0.0
+            # Strict: count unknown as incorrect
+            strict_accuracy = float(np.mean(y_pred_thresh == y_true_argmax))
+            print(f"Overall coverage: {coverage:.4f}")
+            print(f"Accuracy@coverage: {acc_at_cov:.4f}")
+            print(f"Overall accuracy (unknown counted incorrect): {strict_accuracy:.4f}")
+        else:
+            thr_accuracy = np.mean(y_pred_thresh == y_true_argmax)
+            print(f"Overall accuracy (thresholded): {thr_accuracy:.4f}")
         y_pred_for_report = y_pred_thresh
     else:
         y_pred_for_report = y_pred_argmax
@@ -273,14 +301,32 @@ def evaluate_model(model_path, data_dir, target_size=(350, 350), thresholds=None
             print(f"{class_name}: {class_accuracy:.4f}")
         else:
             print(f"{class_name}: No samples available")
+    if thresholds is not None and abstain_unknown:
+        print("unknown (abstained): reported separately via coverage/accuracy@coverage")
 
     # Calculate metrics
     print("\nClassification Report:")
-    print(classification_report(y_true_argmax, y_pred_for_report,
+    # If abstaining, exclude unknown from the report to avoid shape mismatch unless we extend class list
+    if thresholds is not None and abstain_unknown:
+        unk_id = (num_classes if unknown_id is None else int(unknown_id))
+        mask = (y_pred_for_report != unk_id)
+        print(classification_report(y_true_argmax[mask], y_pred_for_report[mask],
+                              target_names=list(data_loader.classes.keys())))
+    else:
+        print(classification_report(y_true_argmax, y_pred_for_report,
                               target_names=list(data_loader.classes.keys())))
     
     # Plot confusion matrix with detailed analysis
-    plot_confusion_matrix(y_true_argmax, y_pred_for_report, 
+    # Confusion matrix: if abstaining, add an "unknown" column for visualization
+    if thresholds is not None and abstain_unknown:
+        unk_id = (num_classes if unknown_id is None else int(unknown_id))
+        # Map unknown to a new label index for plotting convenience
+        y_pred_plot = np.copy(y_pred_for_report)
+        y_pred_plot[y_pred_plot == unk_id] = num_classes  # last index
+        plot_classes = list(data_loader.classes.keys()) + ["unknown"]
+        plot_confusion_matrix(y_true_argmax, y_pred_plot, plot_classes)
+    else:
+        plot_confusion_matrix(y_true_argmax, y_pred_for_report, 
                          list(data_loader.classes.keys()))
     
     # Analyze feature importance
@@ -298,24 +344,27 @@ if __name__ == "__main__":
     parser.add_argument("--target_precision", type=float, default=None, help="Target precision for auto_threshold=target_precision")
     parser.add_argument("--pr_out_dir", type=str, default=None, help="Directory to save per-class PR curves")
     parser.add_argument("--save_thresholds", type=str, default=None, help="Path to save suggested thresholds JSON")
+    parser.add_argument("--abstain_unknown", action="store_true", help="Return unknown when no class passes threshold; report coverage and accuracy@coverage")
+    parser.add_argument("--unknown_id", type=int, default=None, help="Custom integer id for unknown (default: num_classes)")
+    parser.add_argument("--tta", action="store_true", help="Enable simple TTA (flip averaging) during evaluation")
     args = parser.parse_args()
 
     # Build target size
     tsize = (args.target_h, args.target_w)
 
     # Parse thresholds (may be np.ndarray, dict, or None)
-    thresholds = None
-    if args.thresholds is not None:
-        # We need num_classes to fully resolve dict/list; will pass through and resolve dict after data loader known inside evaluate_model
-        thresholds = args.thresholds
+    thresholds = args.thresholds if args.thresholds is not None else None
 
     evaluate_model(
         args.model_path,
         args.data_dir,
         target_size=tsize,
-        thresholds=parse_thresholds_arg(thresholds, num_classes=0) if (thresholds is not None and "," in thresholds) else thresholds,
+        thresholds=thresholds,
         auto_threshold=args.auto_threshold,
         target_precision=args.target_precision,
         pr_out_dir=args.pr_out_dir,
         save_thresholds_path=args.save_thresholds,
+        abstain_unknown=args.abstain_unknown,
+        unknown_id=args.unknown_id,
+        tta=args.tta,
     )

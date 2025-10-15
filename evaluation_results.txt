@@ -342,3 +342,493 @@
                             accuracy                           0.85      5136
                             macro avg       0.83      0.89      0.84      5136
                         weighted avg       0.89      0.85      0.86      5136
+
+
+
+    Updated evaluation: python evaluate_model.py   --model_path multimodal_classifier_class_weights.keras   --data_dir ../image_classification_test_sample   --thresholds 0.904,0.951,0.759,0.04,0.297,0.938,0.95,0.038,0.77,0.775,0.973   --abstain_unknown   --pr_out_dir pr_curves_with_unknown   --save_thresholds thresholds_with_unknown.json
+
+        Overall accuracy (argmax): 0.8505
+        Overall coverage: 0.9840
+        Accuracy@coverage: 0.9533
+        Overall accuracy (unknown counted incorrect): 0.9381
+
+        Per-class accuracy:
+        bias: 0.8750
+        darks: 0.7260
+        flats: 0.9318
+        deep_sky: 0.9940
+        flat_dados: 0.9474
+        spectrum_dados: 0.8406
+        wavelength_calibration_dados: 0.9216
+        flat_baches: 0.9677
+        spectrum_baches: 0.5152
+        wavelength_calibration_baches: 0.9750
+        einsteinturm: 1.0000
+        unknown (abstained): reported separately via coverage/accuracy@coverage
+
+        Classification Report:
+                                    precision    recall  f1-score   support
+
+                                bias       1.00      0.92      0.96        38
+                                darks       1.00      0.73      0.84       754
+                                flats       1.00      0.99      1.00       633
+                            deep_sky       0.93      1.00      0.96      3159
+                        flat_dados       0.98      0.95      0.96        57
+                    spectrum_dados       1.00      0.88      0.94        66
+        wavelength_calibration_dados       1.00      0.98      0.99        48
+                        flat_baches       1.00      0.99      1.00       151
+                    spectrum_baches       0.94      0.61      0.74        28
+        wavelength_calibration_baches       1.00      1.00      1.00        39
+                        einsteinturm       1.00      1.00      1.00        81
+
+                            accuracy                           0.95      5054
+                            macro avg       0.99      0.91      0.94      5054
+                        weighted avg       0.96      0.95      0.95      5054
+
+
+        Detailed Confusion Matrix Analysis:
+
+        bias:
+        True Positives: 35
+        False Positives: 0
+        False Negatives: 5
+        True Negatives: 5096
+        Most confused with:
+            - Predicted as deep_sky: 3 times
+            - Predicted as unknown: 2 times
+
+        darks:
+        True Positives: 551
+        False Positives: 0
+        False Negatives: 208
+        True Negatives: 4377
+        Most confused with:
+            - Predicted as deep_sky: 203 times
+            - Predicted as unknown: 5 times
+
+
+        flats:
+        True Positives: 628
+        False Positives: 0
+        False Negatives: 46
+        True Negatives: 4462
+        Most confused with:
+            - Predicted as deep_sky: 5 times
+            - Predicted as unknown: 41 times
+
+        deep_sky:
+        True Positives: 3158
+        False Positives: 234
+        False Negatives: 19
+        True Negatives: 1725
+        Most confused with:
+            - Misclassified as deep_sky: 3 times
+            - Misclassified as deep_sky: 203 times
+            - Misclassified as deep_sky: 5 times
+            - Predicted as flat_dados: 1 times
+            - Misclassified as deep_sky: 3 times
+            - Misclassified as deep_sky: 8 times
+            - Misclassified as deep_sky: 1 times
+            - Misclassified as deep_sky: 11 times
+            - Predicted as unknown: 18 times
+
+        flat_dados:
+        True Positives: 54
+        False Positives: 1
+        False Negatives: 3
+        True Negatives: 5078
+        Most confused with:
+            - Predicted as deep_sky: 3 times
+            - Misclassified as flat_dados: 1 times
+
+        spectrum_dados:
+        True Positives: 58
+        False Positives: 0
+        False Negatives: 11
+        True Negatives: 5067
+        Most confused with:
+            - Predicted as deep_sky: 8 times
+            - Predicted as unknown: 3 times
+
+        wavelength_calibration_dados:
+        True Positives: 47
+        False Positives: 0
+        False Negatives: 4
+        True Negatives: 5085
+        Most confused with:
+            - Predicted as deep_sky: 1 times
+            - Predicted as unknown: 3 times
+
+        flat_baches:
+        True Positives: 150
+        False Positives: 0
+        False Negatives: 5
+        True Negatives: 4981
+        Most confused with:
+            - Predicted as spectrum_baches: 1 times
+            - Predicted as unknown: 4 times
+
+        spectrum_baches:
+        True Positives: 17
+        False Positives: 1
+        False Negatives: 16
+        True Negatives: 5102
+        Most confused with:
+            - Predicted as deep_sky: 11 times
+            - Misclassified as spectrum_baches: 1 times
+            - Predicted as unknown: 5 times
+
+        wavelength_calibration_baches:
+        True Positives: 39
+        False Positives: 0
+        False Negatives: 1
+        True Negatives: 5096
+        Most confused with:
+            - Predicted as unknown: 1 times
+
+        einsteinturm:
+        True Positives: 81
+        False Positives: 0
+        False Negatives: 0
+        True Negatives: 5055
+
+        unknown:
+        True Positives: 0
+        False Positives: 82
+        False Negatives: 0
+        True Negatives: 5054
+        Most confused with:
+            - Misclassified as unknown: 2 times
+            - Misclassified as unknown: 5 times
+            - Misclassified as unknown: 41 times
+            - Misclassified as unknown: 18 times
+            - Misclassified as unknown: 3 times
+            - Misclassified as unknown: 3 times
+            - Misclassified as unknown: 4 times
+            - Misclassified as unknown: 5 times
+            - Misclassified as unknown: 1 times
+
+        Analyzing feature importance...
+
+        Top 10 Most Important Features:
+            Feature  Importance
+        14  feature_14   32.177353
+        17  feature_17   26.331863
+        6    feature_6   26.221165
+        16  feature_16   24.516695
+        13  feature_13   22.324358
+        4    feature_4    5.270573
+        19  feature_19    4.814322
+        15  feature_15    3.860364
+        1    feature_1    3.761590
+        3    feature_3    3.177174
+
+
+
+
+
+----------------------------------------------------------------------------------------------------
+New larger memory restrictions:
+* python main.py --data_dir ../image_classification_training_sample --epochs 30 --batch_size 24 --target_w 448 --target_h 448 --loss_strategy class_weights --label_smoothing 0.08 --initial_lr 1e-3 --batch_ref 32 --lr_schedule constant --cw_beta 0.3 --cw_cap 4.0 --model_out multimodal_classifier_class_weights_more_memmory.keras
+
+
+* python evaluate_model.py   --model_path multimodal_classifier_class_weights_more_memmory.keras   --data_dir ../image_classification_test_sample   --target_w 448 --target_h 448
+
+    Overall accuracy (argmax): 0.9297
+
+    Per-class accuracy:
+    bias: 0.8750
+    darks: 0.8696
+    flats: 0.9407
+    deep_sky: 0.9452
+    flat_dados: 0.8070
+    spectrum_dados: 0.9420
+    wavelength_calibration_dados: 0.8824
+    flat_baches: 0.9613
+    spectrum_baches: 0.5455
+    wavelength_calibration_baches: 0.9750
+    einsteinturm: 1.0000
+
+    Classification Report:
+                                precision    recall  f1-score   support
+
+                            bias       1.00      0.88      0.93        40
+                            darks       0.89      0.87      0.88       759
+                            flats       0.99      0.94      0.96       674
+                        deep_sky       0.96      0.95      0.95      3177
+                    flat_dados       1.00      0.81      0.89        57
+                spectrum_dados       0.31      0.94      0.47        69
+    wavelength_calibration_dados       0.98      0.88      0.93        51
+                    flat_baches       0.99      0.96      0.98       155
+                spectrum_baches       0.75      0.55      0.63        33
+    wavelength_calibration_baches       1.00      0.97      0.99        40
+                    einsteinturm       1.00      1.00      1.00        81
+
+                        accuracy                           0.93      5136
+                        macro avg       0.90      0.89      0.87      5136
+                    weighted avg       0.95      0.93      0.94      5136
+
+
+    Detailed Confusion Matrix Analysis:
+
+    bias:
+    True Positives: 35
+    False Positives: 0
+    False Negatives: 5
+    True Negatives: 5096
+    Most confused with:
+        - Predicted as darks: 2 times
+        - Predicted as deep_sky: 3 times
+
+    darks:
+    True Positives: 660
+    False Positives: 83
+    False Negatives: 99
+    True Negatives: 4294
+    Most confused with:
+        - Misclassified as darks: 2 times
+        - Predicted as flats: 2 times
+        - Misclassified as darks: 40 times
+        - Predicted as deep_sky: 97 times
+        - Misclassified as darks: 41 times
+
+    flats:
+    True Positives: 634
+    False Positives: 7
+    False Negatives: 40
+    True Negatives: 4455
+    Most confused with:
+        - Predicted as darks: 40 times
+        - Misclassified as flats: 2 times
+        - Misclassified as flats: 3 times
+        - Misclassified as flats: 2 times
+
+    deep_sky:
+    True Positives: 3003
+    False Positives: 118
+    False Negatives: 174
+    True Negatives: 1841
+    Most confused with:
+        - Misclassified as deep_sky: 3 times
+        - Predicted as darks: 41 times
+        - Misclassified as deep_sky: 97 times
+        - Predicted as flats: 3 times
+        - Misclassified as deep_sky: 2 times
+        - Predicted as spectrum_dados: 130 times
+        - Misclassified as deep_sky: 4 times
+        - Misclassified as deep_sky: 6 times
+        - Misclassified as deep_sky: 6 times
+
+    flat_dados:
+    True Positives: 46
+    False Positives: 0
+    False Negatives: 11
+    True Negatives: 5079
+    Most confused with:
+        - Predicted as flats: 2 times
+        - Predicted as deep_sky: 2 times
+        - Predicted as spectrum_dados: 7 times
+
+    spectrum_baches:
+    True Positives: 18
+    False Positives: 6
+    False Negatives: 15
+    True Negatives: 5097
+    Most confused with:
+        - Predicted as deep_sky: 6 times
+        - Predicted as spectrum_dados: 8 times
+        - Predicted as flat_baches: 1 times
+        - Misclassified as spectrum_baches: 6 times
+
+    wavelength_calibration_baches:
+    True Positives: 39
+    False Positives: 0
+    False Negatives: 1
+    True Negatives: 5096
+    Most confused with:
+        - Predicted as wavelength_calibration_dados: 1 times
+
+    einsteinturm:
+    True Positives: 81
+    False Positives: 0
+    False Negatives: 0
+    True Negatives: 5055
+
+    Analyzing feature importance...
+
+    Top 10 Most Important Features:
+        Feature  Importance
+    6    feature_6   25.594021
+    14  feature_14   25.199764
+    17  feature_17   23.514898
+    16  feature_16   17.052120
+    13  feature_13   13.550873
+    3    feature_3    3.634350
+    20  feature_20    2.669310
+    4    feature_4    2.658340
+    15  feature_15    2.643308
+    12  feature_12    2.436071
+
+
+* python evaluate_model.py   --model_path multimodal_classifier_class_weights_more_memmory.keras   --data_dir ../image_classification_test_sample   --target_w 448 --target_h 448 --auto_threshold max_f1  --pr_out_dir pr_curves --save_thresholds thresholds_suggested.json
+
+    Overall accuracy (argmax): 0.9297
+    Overall accuracy (thresholded): 0.9609
+
+    Per-class accuracy:
+    bias: 0.8750
+    darks: 0.8630
+    flats: 0.9407
+    deep_sky: 0.9969
+    flat_dados: 0.8596
+    spectrum_dados: 0.8986
+    wavelength_calibration_dados: 0.8824
+    flat_baches: 0.9613
+    spectrum_baches: 0.5758
+    wavelength_calibration_baches: 0.9750
+    einsteinturm: 1.0000
+
+    Classification Report:
+                                precision    recall  f1-score   support
+
+                            bias       1.00      0.88      0.93        40
+                            darks       0.93      0.86      0.89       759
+                            flats       1.00      0.94      0.97       674
+                        deep_sky       0.96      1.00      0.98      3177
+                    flat_dados       1.00      0.86      0.92        57
+                spectrum_dados       0.90      0.90      0.90        69
+    wavelength_calibration_dados       0.98      0.88      0.93        51
+                    flat_baches       1.00      0.96      0.98       155
+                spectrum_baches       0.76      0.58      0.66        33
+    wavelength_calibration_baches       1.00      0.97      0.99        40
+                    einsteinturm       1.00      1.00      1.00        81
+
+                        accuracy                           0.96      5136
+                        macro avg       0.96      0.89      0.92      5136
+                    weighted avg       0.96      0.96      0.96      5136
+
+
+    Detailed Confusion Matrix Analysis:
+
+    bias:
+    True Positives: 35
+    False Positives: 0
+    False Negatives: 5
+    True Negatives: 5096
+    Most confused with:
+        - Predicted as darks: 2 times
+        - Predicted as deep_sky: 3 times
+
+    darks:
+    True Positives: 655
+    False Positives: 50
+    False Negatives: 104
+    True Negatives: 4327
+    Most confused with:
+        - Misclassified as darks: 2 times
+        - Predicted as flats: 2 times
+        - Misclassified as darks: 40 times
+        - Predicted as deep_sky: 102 times
+        - Misclassified as darks: 8 times
+
+    flats:
+    True Positives: 634
+    False Positives: 3
+    False Negatives: 40
+    True Negatives: 4459
+    Most confused with:
+        - Predicted as darks: 40 times
+        - Misclassified as flats: 2 times
+        - Misclassified as flats: 1 times
+
+    deep_sky:
+    True Positives: 3167
+    False Positives: 134
+    False Negatives: 10
+    True Negatives: 1825
+    Most confused with:
+        - Misclassified as deep_sky: 3 times
+        - Predicted as darks: 8 times
+        - Misclassified as deep_sky: 102 times
+        - Predicted as flats: 1 times
+        - Misclassified as deep_sky: 4 times
+        - Predicted as spectrum_dados: 1 times
+        - Misclassified as deep_sky: 7 times
+        - Misclassified as deep_sky: 6 times
+        - Misclassified as deep_sky: 12 times
+
+    flat_dados:
+    True Positives: 49
+    False Positives: 0
+    False Negatives: 8
+    True Negatives: 5079
+    Most confused with:
+        - Predicted as deep_sky: 4 times
+        - Predicted as spectrum_dados: 4 times
+
+    spectrum_dados:
+    True Positives: 62
+    False Positives: 7
+    False Negatives: 7
+    True Negatives: 5060
+    Most confused with:
+        - Predicted as deep_sky: 7 times
+        - Misclassified as spectrum_dados: 1 times
+        - Misclassified as spectrum_dados: 4 times
+        - Misclassified as spectrum_dados: 2 times
+
+        wavelength_calibration_dados:
+    True Positives: 45
+    False Positives: 1
+    False Negatives: 6
+    True Negatives: 5084
+    Most confused with:
+        - Predicted as deep_sky: 6 times
+        - Misclassified as wavelength_calibration_dados: 1 times
+
+    flat_baches:
+    True Positives: 149
+    False Positives: 0
+    False Negatives: 6
+    True Negatives: 4981
+    Most confused with:
+        - Predicted as spectrum_baches: 6 times
+
+    spectrum_baches:
+    True Positives: 19
+    False Positives: 6
+    False Negatives: 14
+    True Negatives: 5097
+    Most confused with:
+        - Predicted as deep_sky: 12 times
+        - Predicted as spectrum_dados: 2 times
+        - Misclassified as spectrum_baches: 6 times
+
+    wavelength_calibration_baches:
+    True Positives: 39
+    False Positives: 0
+    False Negatives: 1
+    True Negatives: 5096
+    Most confused with:
+        - Predicted as wavelength_calibration_dados: 1 times
+
+    einsteinturm:
+    True Positives: 81
+    False Positives: 0
+    False Negatives: 0
+    True Negatives: 5055
+
+    Analyzing feature importance...
+
+    Top 10 Most Important Features:
+        Feature  Importance
+    6    feature_6   25.594021
+    14  feature_14   25.199764
+    17  feature_17   23.514898
+    16  feature_16   17.052120
+    13  feature_13   13.550873
+    3    feature_3    3.634350
+    20  feature_20    2.669310
+    4    feature_4    2.658340
+    15  feature_15    2.643308
+    12  feature_12    2.436071

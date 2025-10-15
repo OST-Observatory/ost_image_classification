@@ -127,6 +127,10 @@
    - Gewinn: +1–3%
    - Aufwand: gering–mittel; RAM ↑
 
+4. **tf.data mit RAM-Caching und Prefetch**
+   - Implementierung: `cache()` nach Decode/Resize, Augmentation on-the-fly, `prefetch(tf.data.AUTOTUNE)`
+   - Ziel: Höhere Auslastung, stabilere Trainingszeit, deterministischere Batches
+
 4. **Umfangreicheres Hyperparameter-Tuning (Optuna/RayTune) mit vielen Trials**
    - Gewinn: +3–8%
    - Aufwand: mittel–hoch; parallelisierte Trials → RAM/CPU ↑
@@ -150,6 +154,16 @@
 8. **TFRecords + aggressive Caching/Prefetch**
    - Gewinn: +1–3% indirekt (mehr Epochen/konstante Pipeline möglich)
    - Aufwand: mittel; RAM/Platten-I/O Management
+
+---
+
+## Konkrete Empfehlung für 85 GB RAM (praktische Defaults)
+
+- Eingangsauflösung: 448×448 (Startpunkt; ggf. 512 testen)
+- Batch-Größe: 24 (auf CPU ggf. 16–24; mit GPU größer möglich)
+- Lernrate skalieren: `lr_scaled = lr_base * (batch_size / batch_ref)` (z. B. `batch_ref=32`)
+- Pipeline: `tf.data` mit `cache()` und `prefetch(AUTOTUNE)`; Augmentation on-the-fly
+- Thresholding: Nach jeder größeren Änderung PR-Kurven neu bestimmen; ggf. `target_precision` für kritische Klassen
 
 9. **Self-Supervised Pretraining (SimCLR/BYOL) auf eigenen Daten**
    - Gewinn: +3–10% mit genügend unlabeled Data
