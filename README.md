@@ -37,37 +37,49 @@ pip install -r requirements.txt
 ```
 
 ## Training Workflow
-Example (with class weights and smoothed/clipped weighting):
+Recommended training (class weights with smoothing/clipping, warmup+cosine LR, tf.data cache/prefetch, on-the-fly augmentations, MixUp, balanced sampling):
 ```bash
 python main.py \
   --data_dir ../image_classification_training_sample \
-  --target_w 350 --target_h 350 \
-  --epochs 30 --batch_size 32 \
-  --loss_strategy class_weights \
+  --target_w 448 --target_h 448 \
+  --epochs 30 --batch_size 24 \
+  --loss_strategy class_weights --cw_beta 0.3 --cw_cap 4.0 \
   --label_smoothing 0.08 \
-  --initial_lr 1e-3 --lr_schedule constant \
-  --cw_beta 0.3 --cw_cap 4.0 \
-  --model_out multimodal_classifier_class_weights.keras
+  --initial_lr 1e-3 --batch_ref 32 \
+  --lr_schedule cosine --warmup_epochs 5 \
+  --augment --aug_strength 0.3 \
+  --aug_conservative 'flat_dados,darks,flats,spectrum_dados,wavelength_calibration_dados,wavelength_calibration_baches' \
+  --randaug_n 2 --randaug_m 5 \
+  --mixup_alpha 0.1 \
+  --balanced_sampling --balance_cap 4.0 \
+  --model_out multimodal_classifier_mixup_warmup_randaug.keras
 ```
 Notes:
 - `--cw_beta` applies power smoothing to class weights (w := w^beta). Use 0.2–0.5 for moderate smoothing.
 - `--cw_cap` clips weights to cap × median(weight) to avoid excessive minority up-weighting.
-- Set `--loss_strategy focal_loss` to enable focal loss with automatic class-specific alpha (from inverse frequencies). Default gamma=2.0 (see `main.py`).
+- Warmup + cosine LR: `--lr_schedule cosine --warmup_epochs 5` typically stabilizes early training.
+- On-the-fly augmentation can be tuned via `--aug_strength`, and conservative classes are passed via `--aug_conservative`.
+- RandAugment-light adds small extra ops for non-conservative classes: `--randaug_n`, `--randaug_m`.
+- MixUp can improve robustness at class boundaries: `--mixup_alpha 0.1–0.2`.
+- Balanced sampling increases minority coverage without double-weighting (per-sample weights are disabled when balanced sampling is on).
+- Set `--loss_strategy focal_loss` to enable focal loss with automatic class-specific alpha if desired; in our tests class weights performed better overall.
 
 ## Evaluation Workflow
 Basic evaluation:
 ```bash
 python evaluate_model.py \
-  --model_path multimodal_classifier_class_weights.keras \
+  --model_path multimodal_classifier_mixup_warmup_randaug.keras \
   --data_dir ../image_classification_test_sample \
-  --target_w 350 --target_h 350
+  --target_w 448 --target_h 448
 ```
 
-With auto-thresholding (per-class max-F1) and PR curves:
+With auto-thresholding (per-class max-F1), TTA and PR curves:
 ```bash
 python evaluate_model.py \
-  --model_path multimodal_classifier_class_weights.keras \
+  --model_path multimodal_classifier_mixup_warmup_randaug.keras \
   --data_dir ../image_classification_test_sample \
+  --target_w 448 --target_h 448 \
+  --tta --fit_temperature \
   --auto_threshold max_f1 \
   --pr_out_dir pr_curves \
   --save_thresholds thresholds_suggested.json
@@ -76,14 +88,22 @@ python evaluate_model.py \
 Using explicit per-class thresholds (comma-separated list; order follows `data_loader.classes`):
 ```bash
 python evaluate_model.py \
-  --model_path multimodal_classifier_class_weights.keras \
+  --model_path multimodal_classifier_mixup_warmup_randaug.keras \
   --data_dir ../image_classification_test_sample \
+  --target_w 448 --target_h 448 \
   --thresholds 0.904,0.951,0.759,0.04,0.297,0.938,0.95,0.038,0.77,0.775,0.973 \
   --pr_out_dir pr_curves_final2 \
   --save_thresholds thresholds_final2.json
 ```
 
 You can also pass `--thresholds` as a JSON path with a list of thresholds or a dict mapping class names to thresholds.
+We ship ready-to-use profiles:
+- Production precision-focused: `thresholds_prod_precision.json`
+- Production recall-focused: `thresholds_prod_recall.json`
+
+Temperature scaling:
+- Fit temperature on-the-fly: `--fit_temperature`
+- Or set a fixed temperature (e.g., from previous fit): `--temperature 0.7`
 
 ## Thresholds: What they are and how to use them
 - What they do: Per-class thresholds do not change trained weights; they only change the decision rule at inference/evaluation. They shift the precision–recall trade-off per class and can increase reported accuracy and calibration without retraining.
@@ -123,10 +143,8 @@ python evaluate_model.py ... --abstain_unknown --unknown_id 99
 From recent experiments:
 - Class weights with smoothing/clipping: `--cw_beta 0.3 --cw_cap 4.0`
 - Label smoothing: `--label_smoothing 0.08`
-- Per-class thresholds (close to max-F1, lightly adjusted):
-  - Order is `[bias, darks, flats, deep_sky, flat_dados, spectrum_dados, wavelength_calibration_dados, flat_baches, spectrum_baches, wavelength_calibration_baches, einsteinturm]`
-  - Thresholds: `0.904, 0.951, 0.759, 0.04, 0.297, 0.938, 0.95, 0.038, 0.77, 0.775, 0.973`
-- Observed performance (thresholded): overall accuracy ≈ 0.94 with strong precision across classes and high recall for major classes. Key trade-offs:
+- Per-class thresholds: prefer JSON profiles (precision vs recall) shipped in repo; re-fit via PR curves when data changes.
+- Observed performance (thresholded): overall accuracy ≈ 0.96 with strong precision across classes and high recall for major classes. Key trade-offs:
   - Slight recall reduction for `darks` and `spectrum_baches` compared to argmax
   - Substantially improved calibration for `deep_sky` and `wavelength_calibration_*`
 
@@ -139,10 +157,9 @@ From recent experiments:
 - Always evaluate in batches; avoid full-dataset inference in memory.
 
 ## Known Next Steps
-- Introduce a `tf.data` streaming data pipeline with on-the-fly augmentation
-- Optional: balanced batch sampling
-- Optional: class-specific threshold search targeting precision per class
-- Optional: lighter CNN backbone (depthwise/separable convolutions)
+- Optional: class-specific threshold search targeting precision per class (automate per-class targets)
+- Optional: lighter CNN backbone (depthwise/separable convolutions) or small transfer backbone if GPU becomes available
+- Optional: K-fold validation for more stable operating points (compute-intensive)
 
 ---
 If you make changes to class mappings in `data_loader.py`, ensure that the threshold list ordering and saved scaler (`*_feat_scaler.npz`) remain consistent across training and evaluation.
