@@ -153,7 +153,8 @@ class MultiModalClassifier:
         return self.model.predict([images, features, confidences])
     
     def save(self, path):
-        self.model.save(path, save_format='keras')
+        # Save without optimizer to avoid serializing custom LR schedules
+        self.model.save(path, include_optimizer=False)
     
     def load(self, path):
         # For inference/evaluation, compilation is not needed and can fail

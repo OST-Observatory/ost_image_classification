@@ -1,0 +1,14 @@
+{
+  "bias": 0.119,
+  "darks": 0.562,
+  "flats": 0.883,
+  "deep_sky": 0.174,
+  "flat_dados": 0.036,
+  "spectrum_dados": 0.576,
+  "wavelength_calibration_dados": 0.164,
+  "flat_baches": 0.047,
+  "spectrum_baches": 0.359,
+  "wavelength_calibration_baches": 0.623,
+  "einsteinturm": 0.864
+}
+

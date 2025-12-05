@@ -184,7 +184,7 @@ def apply_thresholds_to_predictions(proba, thresholds, strategy="gate", abstain=
                 gated_idx.append(int(top_idx[i]))
     return np.array(gated_idx, dtype=np.int32)
 
-def evaluate_model(model_path, data_dir, target_size=(350, 350), thresholds=None, auto_threshold=None, target_precision=None, pr_out_dir=None, save_thresholds_path=None, abstain_unknown=False, unknown_id=None, tta=False):
+def evaluate_model(model_path, data_dir, target_size=(350, 350), thresholds=None, auto_threshold=None, target_precision=None, pr_out_dir=None, save_thresholds_path=None, abstain_unknown=False, unknown_id=None, tta=False, temperature: float | None = None, fit_temperature: bool = False):
     # Initialize data loader
     data_loader = FITSDataLoader(target_size)
     
@@ -226,6 +226,30 @@ def evaluate_model(model_path, data_dir, target_size=(350, 350), thresholds=None
         proba_list.append(_predict(images[:, ::-1, :, :]))  # H flip
         proba_list.append(_predict(images[:, :, ::-1, :]))  # V flip
         proba = np.mean(np.stack(proba_list, axis=0), axis=0)
+
+    # Temperature scaling (probability sharpening): p_T = normalize(p ** (1/T))
+    def apply_temperature(p: np.ndarray, T: float) -> np.ndarray:
+        eps = 1e-8
+        q = np.power(np.clip(p, eps, 1.0), 1.0 / max(T, eps))
+        q /= np.sum(q, axis=1, keepdims=True)
+        return q
+
+    if fit_temperature:
+        # Simple grid search for T that minimizes NLL on this dataset
+        Ts = np.linspace(0.5, 3.0, num=26)
+        best_T = 1.0
+        best_nll = float('inf')
+        y_true_onehot = labels_onehot
+        for T in Ts:
+            q = apply_temperature(proba, T)
+            nll = -np.mean(np.sum(y_true_onehot * np.log(np.clip(q, 1e-8, 1.0)), axis=1))
+            if nll < best_nll:
+                best_nll = nll
+                best_T = float(T)
+        proba = apply_temperature(proba, best_T)
+        print(f"Fitted temperature T={best_T:.3f} (NLL={best_nll:.4f})")
+    elif temperature is not None and float(temperature) != 1.0:
+        proba = apply_temperature(proba, float(temperature))
 
     # Handle thresholds argument that may be a string (comma list or JSON path) or a dict
     class_names = list(data_loader.classes.keys())
@@ -347,6 +371,8 @@ if __name__ == "__main__":
     parser.add_argument("--abstain_unknown", action="store_true", help="Return unknown when no class passes threshold; report coverage and accuracy@coverage")
     parser.add_argument("--unknown_id", type=int, default=None, help="Custom integer id for unknown (default: num_classes)")
     parser.add_argument("--tta", action="store_true", help="Enable simple TTA (flip averaging) during evaluation")
+    parser.add_argument("--temperature", type=float, default=None, help="Apply probability temperature scaling (p**(1/T) normalized)")
+    parser.add_argument("--fit_temperature", action="store_true", help="Fit temperature T on this dataset by minimizing NLL (grid search)")
     args = parser.parse_args()
 
     # Build target size
@@ -367,4 +393,6 @@ if __name__ == "__main__":
         abstain_unknown=args.abstain_unknown,
         unknown_id=args.unknown_id,
         tta=args.tta,
+        temperature=args.temperature,
+        fit_temperature=args.fit_temperature,
     )

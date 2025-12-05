@@ -65,6 +65,12 @@ def main():
     parser.add_argument("--augment", action="store_true", help="Aktiviere On-the-fly Augmentation (nur Training)")
     parser.add_argument("--aug_strength", type=float, default=0.5, help="Augmentierungsstärke [0..1] (steuert Helligkeit/Kontrast/Shift)")
     parser.add_argument("--aug_conservative", type=str, default=None, help="Komma-separierte Klassen mit konservativer Augmentation (z. B. 'darks,flats')")
+    parser.add_argument("--balanced_sampling", action="store_true", help="Leichtes Oversampling seltener Klassen (upsampling mit Cap)")
+    parser.add_argument("--balance_cap", type=float, default=3.0, help="Maximaler Oversampling-Faktor pro Klasse (z. B. 3.0)")
+    parser.add_argument("--mixup_alpha", type=float, default=0.0, help="MixUp-Stärke alpha (0 = aus)")
+    parser.add_argument("--warmup_epochs", type=int, default=0, help="Anzahl Warmup-Epochen vor Cosine-Decay")
+    parser.add_argument("--randaug_n", type=int, default=0, help="Anzahl zusätzlicher RandAugment-Operationen (nur starke Klassen)")
+    parser.add_argument("--randaug_m", type=int, default=5, help="Magnitude [0..10] für RandAugment-light")
 
     args = parser.parse_args()
     # Configuration
@@ -120,9 +126,35 @@ def main():
     # Scale learning rate with batch size
     lr_scaled = args.initial_lr * (args.batch_size / max(1, args.batch_ref))
     if args.lr_schedule == "cosine":
-        optimizer = build_optimizer_with_cosine(initial_lr=lr_scaled,
-                                                first_decay_epochs=5,
-                                                steps_per_epoch=steps_per_epoch)
+        # Warmup + CosineDecay (ohne Restarts) über alle Trainingsschritte
+        warmup_steps = int(max(0, args.warmup_epochs) * steps_per_epoch)
+        total_steps = int(max(1, args.epochs) * steps_per_epoch)
+        decay_steps = max(1, total_steps - warmup_steps)
+        class WarmupCosine(tf.keras.optimizers.schedules.LearningRateSchedule):
+            def __init__(self, base_lr, warm_steps, decay_steps):
+                self.base_lr = float(base_lr)
+                self.warm_steps = int(max(0, warm_steps))
+                self.decay_steps = int(decay_steps)
+                self.decay = tf.keras.optimizers.schedules.CosineDecay(
+                    initial_learning_rate=self.base_lr,
+                    decay_steps=self.decay_steps,
+                    alpha=0.0
+                )
+            def __call__(self, step):
+                step_f = tf.cast(step, tf.float32)
+                if self.warm_steps > 0:
+                    warm = self.base_lr * (step_f / tf.maximum(1.0, tf.cast(self.warm_steps, tf.float32)))
+                    return tf.where(step_f < self.warm_steps, warm, self.decay(step_f - self.warm_steps))
+                else:
+                    return self.decay(step_f)
+            def get_config(self):
+                return {
+                    "base_lr": self.base_lr,
+                    "warm_steps": self.warm_steps,
+                    "decay_steps": self.decay_steps,
+                }
+        schedule = WarmupCosine(lr_scaled, warmup_steps, decay_steps)
+        optimizer = tf.keras.optimizers.Adam(learning_rate=schedule)
     else:
         # Stable baseline optimizer
         optimizer = tf.keras.optimizers.AdamW(learning_rate=lr_scaled, weight_decay=1e-4)
@@ -169,6 +201,23 @@ def main():
                     lower = max(0.5, 1.0 - 0.10 * aug_s_val)
                     upper = 1.0 + 0.10 * aug_s_val
                     x = tf.image.random_contrast(x, lower=float(lower), upper=float(upper))
+                    # RandAugment-light: apply N ops with small magnitude
+                    n_ops = int(max(0, args.randaug_n))
+                    m_scale = float(max(0, min(10, args.randaug_m))) / 10.0  # [0..1]
+                    for _ in range(n_ops):
+                        op = tf.random.uniform([], minval=0, maxval=3, dtype=tf.int32)
+                        def op_brightness(y):
+                            return tf.image.random_brightness(y, max_delta=0.05 * m_scale)
+                        def op_contrast(y):
+                            low = 1.0 - 0.10 * m_scale
+                            high = 1.0 + 0.10 * m_scale
+                            return tf.image.random_contrast(y, lower=float(low), upper=float(high))
+                        def op_shift(y):
+                            sh = tf.cast(tf.math.maximum(1.0, tf.round(0.02 * tf.maximum(h, w) * m_scale)), tf.int32)
+                            ddx = tf.random.uniform([], minval=-sh, maxval=sh + 1, dtype=tf.int32)
+                            ddy = tf.random.uniform([], minval=-sh, maxval=sh + 1, dtype=tf.int32)
+                            return tf.roll(y, shift=[ddy, ddx], axis=[0, 1])
+                        x = tf.switch_case(op, branch_fns=[lambda: op_brightness(x), lambda: op_contrast(x), lambda: op_shift(x)])
                     return x
                 def light_aug():
                     x = tf.image.random_brightness(img, max_delta=0.05 * aug_s_val)
@@ -190,6 +239,64 @@ def main():
             else:
                 ds = ds.map(_aug_no_w, num_parallel_calls=tf.data.AUTOTUNE)
         ds = ds.batch(batch_size)
+        # MixUp after batching
+        if float(args.mixup_alpha) > 0.0:
+            alpha = float(args.mixup_alpha)
+            def _sample_lambda(batch_size_tf):
+                # Beta(alpha, alpha) via Gamma
+                g1 = tf.random.gamma(shape=[batch_size_tf], alpha=alpha)
+                g2 = tf.random.gamma(shape=[batch_size_tf], alpha=alpha)
+                lam = g1 / (g1 + g2)
+                return lam
+            def _mix_no_w(batch_inputs, batch_labels):
+                (bx, bf, bc) = batch_inputs
+                bs = tf.shape(bx)[0]
+                lam = _sample_lambda(bs)
+                lam_x = tf.reshape(lam, [-1, 1, 1, 1])
+                lam_f = tf.reshape(lam, [-1, 1])
+                lam_c = tf.reshape(lam, [-1, 1])
+                lam_y = tf.reshape(lam, [-1, 1])
+                idx = tf.random.shuffle(tf.range(bs))
+                bx2 = tf.gather(bx, idx)
+                bf2 = tf.gather(bf, idx)
+                bc2 = tf.gather(bc, idx)
+                by2 = tf.gather(batch_labels, idx)
+                x_mix = lam_x * bx + (1.0 - lam_x) * bx2
+                f_mix = lam_f * bf + (1.0 - lam_f) * bf2
+                c_mix = lam_c * bc + (1.0 - lam_c) * bc2
+                labels_a = tf.cast(batch_labels, tf.float32)
+                labels_b = tf.cast(by2, tf.float32)
+                y_mix = lam_y * labels_a + (1.0 - lam_y) * labels_b
+                return (x_mix, f_mix, c_mix), y_mix
+            def _mix_with_w(batch_inputs, batch_labels, batch_w):
+                (bx, bf, bc) = batch_inputs
+                bs = tf.shape(bx)[0]
+                lam = _sample_lambda(bs)
+                lam_x = tf.reshape(lam, [-1, 1, 1, 1])
+                lam_f = tf.reshape(lam, [-1, 1])
+                lam_c = tf.reshape(lam, [-1, 1])
+                lam_y = tf.reshape(lam, [-1, 1])
+                idx = tf.random.shuffle(tf.range(bs))
+                bx2 = tf.gather(bx, idx)
+                bf2 = tf.gather(bf, idx)
+                bc2 = tf.gather(bc, idx)
+                by2 = tf.gather(batch_labels, idx)
+                x_mix = lam_x * bx + (1.0 - lam_x) * bx2
+                f_mix = lam_f * bf + (1.0 - lam_f) * bf2
+                c_mix = lam_c * bc + (1.0 - lam_c) * bc2
+                labels_a = tf.cast(batch_labels, tf.float32)
+                labels_b = tf.cast(by2, tf.float32)
+                y_mix = lam_y * labels_a + (1.0 - lam_y) * labels_b
+                return (x_mix, f_mix, c_mix), y_mix, batch_w
+            try:
+                # Attempt mapping with/without weights based on structure
+                element_spec = ds.element_spec
+                if isinstance(element_spec, tuple) and len(element_spec) == 3:
+                    ds = ds.map(_mix_with_w, num_parallel_calls=tf.data.AUTOTUNE)
+                else:
+                    ds = ds.map(_mix_no_w, num_parallel_calls=tf.data.AUTOTUNE)
+            except Exception:
+                ds = ds.map(_mix_no_w, num_parallel_calls=tf.data.AUTOTUNE)
         ds = ds.prefetch(tf.data.AUTOTUNE)
         return ds
 
@@ -216,8 +323,8 @@ def main():
         mean_new = float(np.mean(smoothed))
         scale = mean_orig / max(1e-8, mean_new)
         smoothed *= scale
-        # Build per-sample weights from class weights
-        sw_train = smoothed[y_train_int]
+        # Build per-sample weights from class weights (disabled when balanced sampling is used)
+        sw_train = smoothed[y_train_int] if not args.balanced_sampling else None
     else:
         # focal loss mit alpha vektor (inverse Häufigkeit)
         class_counts = np.bincount(y_train_int, minlength=num_classes).astype(np.float32)
@@ -226,7 +333,30 @@ def main():
         loss = focal_loss(alpha_vector=alpha_vector, gamma=2.0)
         sw_train = None
 
-    train_ds = make_dataset(X_train, F_train, C_train, y_train, batch_size=args.batch_size, shuffle=True, cache=True, sample_weights=sw_train, augment=bool(args.augment), conservative_idxs=conservative_indices)
+    # Optional balanced upsampling with cap
+    if args.balanced_sampling:
+        counts = np.bincount(y_train_int, minlength=num_classes).astype(np.int64)
+        target_counts = np.minimum((counts * args.balance_cap).astype(np.int64), np.max(counts))
+        idxs = []
+        for cls in range(num_classes):
+            cls_idx = np.where(y_train_int == cls)[0]
+            if cls_idx.size == 0:
+                continue
+            mult = int(np.ceil(target_counts[cls] / max(1, cls_idx.size)))
+            rep = np.tile(cls_idx, reps=mult)[:target_counts[cls]]
+            idxs.append(rep)
+        if len(idxs) > 0:
+            idxs = np.concatenate(idxs)
+            np.random.shuffle(idxs)
+            X_train_b = X_train[idxs]
+            F_train_b = F_train[idxs]
+            C_train_b = C_train[idxs]
+            y_train_b = y_train[idxs]
+        else:
+            X_train_b, F_train_b, C_train_b, y_train_b = X_train, F_train, C_train, y_train
+        train_ds = make_dataset(X_train_b, F_train_b, C_train_b, y_train_b, batch_size=args.batch_size, shuffle=True, cache=True, sample_weights=None, augment=bool(args.augment), conservative_idxs=conservative_indices)
+    else:
+        train_ds = make_dataset(X_train, F_train, C_train, y_train, batch_size=args.batch_size, shuffle=True, cache=True, sample_weights=sw_train, augment=bool(args.augment), conservative_idxs=conservative_indices)
     val_ds = make_dataset(X_test, F_test, C_test, y_test, batch_size=args.batch_size, shuffle=False, cache=True, sample_weights=None, augment=False, conservative_idxs=[])
 
     # Compile and fit using dataset API
