@@ -1,0 +1,55 @@
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+.env
+.venv
+venv/
+env/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+
+# Logs / TensorBoard
+logs/
+*.log
+*.tfevents.*
+
+# Keras / model artifacts
+*.keras
+*.h5
+*.hdf5
+*.ckpt*
+checkpoints/
+saved_model/
+
+# Generated evaluation artifacts
+confusion_matrix.png
+feature_importance.png
+pr_curves*/
+pr_curves_*/
+
+# Auto-generated thresholds (keep curated prod profiles)
+thresholds_suggested*.json
+thresholds_with_unknown.json
+thresholds_tuned*.json
+thresholds_balanced.json
+
+# Saved scalers
+*_feat_scaler.npz
+
+# Jupyter
+.ipynb_checkpoints/
+
