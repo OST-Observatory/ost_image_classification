@@ -161,5 +161,99 @@ From recent experiments:
 - Optional: lighter CNN backbone (depthwise/separable convolutions) or small transfer backbone if GPU becomes available
 - Optional: K-fold validation for more stable operating points (compute-intensive)
 
+## Production usage
+- Model and scaler
+  - Use the saved Keras model (`*.keras`) and the matching feature scaler (`*_feat_scaler.npz`).
+  - Always resize to the trained target size (e.g., 448×448) and normalize images consistently with the training pipeline.
+- Thresholds and temperature
+  - Fix temperature to 0.7 (as validated) or refit periodically on fresh validation data.
+  - Choose a threshold profile:
+    - Precision-focused: `thresholds_prod_precision.json`
+    - Recall-focused: `thresholds_prod_recall.json`
+- Abstain/Unknown
+  - Enable abstain in sensitive pipelines: return “unknown” if no class exceeds its threshold. This reduces false positives at a small coverage cost.
+- TTA
+  - Keep TTA off by default for latency-sensitive paths; enable `--tta` if you can afford the extra compute for a small accuracy boost.
+- Monitoring and refresh
+  - Log: coverage, accuracy@coverage (if abstaining), per-class precision/recall, and NLL.
+  - Track input data drift; when drift is detected or on a schedule (e.g., monthly), refit temperature and regenerate threshold suggestions via PR curves.
+  - Version artifacts: model, scaler, thresholds, temperature.
+
+Example batch inference (production-like):
+```bash
+python evaluate_model.py \
+  --model_path multimodal_classifier_mixup_warmup_randaug.keras \
+  --data_dir ../image_classification_test_sample \
+  --target_w 448 --target_h 448 \
+  --temperature 0.7 \
+  --thresholds thresholds_prod_precision.json \
+  --abstain_unknown
+```
+
+### CLI tool for filesystem classification
+- Classify all supported images below a directory and save a JSON report:
+```bash
+python inference_runner.py filesystem \
+  --input_dir /data/images \
+  --output_json results.json \
+  --model_path multimodal_classifier_mixup_warmup_randaug_2.keras \
+  --thresholds thresholds_prod_precision.json \
+  --temperature 0.7 \
+  --tta \
+  --abstain_unknown \
+  --defect_log defects.json
+```
+JSON schema:
+- `meta`: timestamp, model_path, thresholds_path, temperature, tta, abstain_unknown, unknown_id, batch_size, coverage, num_files, classes, elapsed_sec
+- `results[]`: path, class, class_id, score, abstained, (optional `_probs` if `--include_probs`)
+- `defects[]`: per-file issues detected during loading/preprocessing: `{ path, issue, message }`
+  - Loader hardening:
+    - FITS opened with `memmap=True, ignore_missing_end=True` (truncated files warned und geloggt)
+    - NaN/Inf werden zu 0.0 gesetzt; degenerierte Bilder (nahezu konstant) werden markiert
+
+### Django integration (examples)
+- Import `ClassifierService` from `inference_runner.py` and call `predict_paths()` with your list of file paths.
+- Management command outline:
+```python
+# yourapp/management/commands/classify_new_files.py
+from django.core.management.base import BaseCommand
+from inference_runner import ClassifierService
+
+class Command(BaseCommand):
+    def handle(self, *args, **options):
+        svc = ClassifierService(
+            model_path=\"multimodal_classifier_mixup_warmup_randaug_2.keras\",
+            thresholds_path=\"thresholds_prod_precision.json\",
+            temperature=0.7,
+            tta=True,
+            abstain_unknown=True,
+        )
+        paths = [...]  # collect from your DB
+        payload = svc.predict_paths(paths, batch_size=32)
+        # persist payload[\"results\"] to your DB
+```
+- Celery task outline:
+```python
+# yourapp/tasks.py
+from celery import shared_task
+from inference_runner import ClassifierService
+
+_svc = None
+def get_svc():
+    global _svc
+    if _svc is None:
+        _svc = ClassifierService(
+            model_path=\"multimodal_classifier_mixup_warmup_randaug_2.keras\",
+            thresholds_path=\"thresholds_prod_precision.json\",
+            temperature=0.7, tta=True, abstain_unknown=True
+        )
+    return _svc
+
+@shared_task
+def classify_paths(paths):
+    svc = get_svc()
+    return svc.predict_paths(paths, batch_size=32)
+```
+
 ---
 If you make changes to class mappings in `data_loader.py`, ensure that the threshold list ordering and saved scaler (`*_feat_scaler.npz`) remain consistent across training and evaluation.

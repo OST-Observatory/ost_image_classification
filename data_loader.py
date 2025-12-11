@@ -23,6 +23,8 @@ class FITSDataLoader:
             'wavelength_calibration_baches': 9,
             'einsteinturm': 10,
         }
+        # store warnings from last file read (for callers that want to log defects)
+        self.last_read_warnings = []
         # Define all possible file extensions
         self.supported_extensions = {
             '.fit', '.FIT', '.fits', '.FITS',  # FITS extensions
@@ -72,14 +74,29 @@ class FITSDataLoader:
             
             # Load based on file type
             if ext in {'.fit', '.fits'}:
-                with fits.open(resolved_path) as hdul:
-                    data = hdul[0].data
+                import warnings
+                self.last_read_warnings = []
+                # First try with memmap=True (fast, low RAM)
+                try:
+                    with warnings.catch_warnings(record=True) as w:
+                        warnings.simplefilter("always")
+                        with fits.open(resolved_path, memmap=True, ignore_missing_end=True) as hdul:
+                            data = hdul[0].data
+                        self.last_read_warnings = [str(ww.message) for ww in w]
+                except Exception as fe:
+                    # Fallback without memmap for files with BZERO/BSCALE/BLANK or scaling
+                    with warnings.catch_warnings(record=True) as w2:
+                        warnings.simplefilter("always")
+                        with fits.open(resolved_path, memmap=False, ignore_missing_end=True) as hdul:
+                            data = hdul[0].data
+                        self.last_read_warnings = [f"fallback_no_memmap: {fe}"] + [str(ww.message) for ww in w2]
             elif ext in {'.tif', '.tiff'}:
                 with Image.open(resolved_path) as img:
                     data = np.array(img)
             else:
                 raise ValueError(f"Unsupported file type: {ext}")
-            
+            # sanitize NaNs/Inf early
+            data = np.nan_to_num(data, nan=0.0, posinf=0.0, neginf=0.0)
             return data
         except Exception as e:
             print(f"Error loading image file {file_path}: {str(e)}")
@@ -283,6 +300,8 @@ class FITSDataLoader:
         """Preprocess the image data and extract features.
         Returns both the preprocessed image and extracted features."""
         try:
+            # sanitize values for robust stats
+            image = np.nan_to_num(image, nan=0.0, posinf=0.0, neginf=0.0)
             # Calculate image statistics
             image_stats = self.calculate_image_statistics(image)
             
