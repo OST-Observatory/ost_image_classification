@@ -21,6 +21,7 @@ Thumbs.db
 build/
 dist/
 *.egg-info/
+.eggs/
 
 # Logs / TensorBoard
 logs/

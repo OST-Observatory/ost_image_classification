@@ -31,10 +31,46 @@ This repository implements a multimodal image classifier for astronomical data. 
   - Feature-importance probe (gradient-based on the feature branch)
 
 ## Installation
-Use Python 3.9+ recommended. Install dependencies:
+
+### Option 1: Install from Git repository (recommended for Django integration)
+```bash
+pip install git+https://your-git-server/ost_image_classification.git@main
+# Or with a specific branch/tag:
+pip install git+https://your-git-server/ost_image_classification.git@v1.0.0
+# For private repos, use authentication:
+pip install git+https://token@your-git-server/ost_image_classification.git@main
+```
+
+After installation, you can import the service in your Django project:
+```python
+from inference_runner import ClassifierService
+```
+
+The CLI tool is also available as `ost-classify`:
+```bash
+ost-classify filesystem --input_dir /data/images --output_json results.json ...
+```
+
+### Option 2: Local development installation
+For local development or if you have the repository cloned:
+```bash
+cd /path/to/ost_image_classification
+pip install -e .
+```
+
+**Updating the package in Django:**
+To update to the latest version from Git:
+```bash
+pip install --upgrade --force-reinstall git+https://your-git-server/ost_image_classification.git@main
+```
+Or if installed via requirements.txt, update the commit hash/tag and reinstall.
+
+### Option 3: Manual dependency installation
+If you prefer to use the code directly without packaging:
 ```bash
 pip install -r requirements.txt
 ```
+Then add the repository directory to your `PYTHONPATH` or import directly.
 
 ## Training Workflow
 Recommended training (class weights with smoothing/clipping, warmup+cosine LR, tf.data cache/prefetch, on-the-fly augmentations, MixUp, balanced sampling):
@@ -211,48 +247,94 @@ JSON schema:
     - FITS opened with `memmap=True, ignore_missing_end=True` (truncated files warned und geloggt)
     - NaN/Inf werden zu 0.0 gesetzt; degenerierte Bilder (nahezu konstant) werden markiert
 
-### Django integration (examples)
-- Import `ClassifierService` from `inference_runner.py` and call `predict_paths()` with your list of file paths.
-- Management command outline:
+### Django integration
+
+**Step 1: Install the package in your Django project**
+Add to your Django project's `requirements.txt`:
+```
+git+https://your-git-server/ost_image_classification.git@main
+```
+Then run `pip install -r requirements.txt`.
+
+**Step 2: Ensure model files are accessible**
+Copy or symlink the trained model and threshold files to a location accessible by your Django app:
+- Model file: `multimodal_classifier_mixup_warmup_randaug_2.keras`
+- Feature scaler: `multimodal_classifier_mixup_warmup_randaug_2_feat_scaler.npz`
+- Thresholds: `thresholds_prod_precision.json` (or `thresholds_prod_recall.json`)
+
+**Step 3: Use ClassifierService in your code**
+- Management command example:
 ```python
 # yourapp/management/commands/classify_new_files.py
+import os
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from inference_runner import ClassifierService
 
 class Command(BaseCommand):
     def handle(self, *args, **options):
+        # Use settings to configure paths
+        model_path = os.path.join(settings.BASE_DIR, 'models', 'multimodal_classifier_mixup_warmup_randaug_2.keras')
+        thresholds_path = os.path.join(settings.BASE_DIR, 'models', 'thresholds_prod_precision.json')
+        
         svc = ClassifierService(
-            model_path=\"multimodal_classifier_mixup_warmup_randaug_2.keras\",
-            thresholds_path=\"thresholds_prod_precision.json\",
+            model_path=model_path,
+            thresholds_path=thresholds_path,
             temperature=0.7,
             tta=True,
             abstain_unknown=True,
         )
-        paths = [...]  # collect from your DB
+        paths = [...]  # collect from your DB (e.g., File.objects.filter(classified=False).values_list('path', flat=True))
         payload = svc.predict_paths(paths, batch_size=32)
-        # persist payload[\"results\"] to your DB
+        
+        # Process results and persist to your DB
+        for result in payload['results']:
+            if 'error' in result:
+                self.stdout.write(self.style.ERROR(f"Error processing {result['path']}: {result['error']}"))
+                continue
+            # Update your model instance
+            # file_obj = File.objects.get(path=result['path'])
+            # file_obj.classification = result['class']
+            # file_obj.classification_score = result['score']
+            # file_obj.abstained = result['abstained']
+            # file_obj.save()
+        
+        self.stdout.write(self.style.SUCCESS(f"Classified {len(payload['results'])} files"))
 ```
-- Celery task outline:
+- Celery task example:
 ```python
 # yourapp/tasks.py
+import os
+from django.conf import settings
 from celery import shared_task
 from inference_runner import ClassifierService
 
 _svc = None
+
 def get_svc():
     global _svc
     if _svc is None:
+        model_path = os.path.join(settings.BASE_DIR, 'models', 'multimodal_classifier_mixup_warmup_randaug_2.keras')
+        thresholds_path = os.path.join(settings.BASE_DIR, 'models', 'thresholds_prod_precision.json')
         _svc = ClassifierService(
-            model_path=\"multimodal_classifier_mixup_warmup_randaug_2.keras\",
-            thresholds_path=\"thresholds_prod_precision.json\",
-            temperature=0.7, tta=True, abstain_unknown=True
+            model_path=model_path,
+            thresholds_path=thresholds_path,
+            temperature=0.7,
+            tta=True,
+            abstain_unknown=True,
         )
     return _svc
 
 @shared_task
 def classify_paths(paths):
+    """Classify a list of file paths and return results."""
     svc = get_svc()
     return svc.predict_paths(paths, batch_size=32)
+
+# Usage in your Django views/models:
+# from yourapp.tasks import classify_paths
+# result = classify_paths.delay(file_paths)  # Async
+# payload = result.get()  # Wait for result
 ```
 
 ---

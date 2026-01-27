@@ -115,13 +115,14 @@ class ClassifierService:
         proba_list.append(np.asarray(self.model.predict(images_b[:, :, ::-1, :], features_b, conf_b), dtype=np.float32))
         return np.mean(np.stack(proba_list, axis=0), axis=0)
 
-    def _prepare_items(self, paths: List[str]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, List[str], List[str], List[Dict[str, Any]]]:
+    def _prepare_items(self, paths: List[str]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, List[str], List[str], List[Dict[str, Any]], List[Dict[str, Any]]]:
         images = []
         feats = []
         confs = []
         ok_paths = []
         errors = []
-        defects: List[Dict[str, Any]] = []
+        defects: List[Dict[str, Any]] = []   # only truly unreadable files (exceptions)
+        warnings_list: List[Dict[str, Any]] = []  # non-fatal issues (read warnings, degenerate image)
         target_feat_len: Optional[int] = None
         target_conf_len: Optional[int] = None
         for p in paths:
@@ -129,7 +130,7 @@ class ClassifierService:
                 img = self.loader.load_image(p)
                 # log any loader warnings (e.g., truncated FITS)
                 for msg in getattr(self.loader, "last_read_warnings", []) or []:
-                    defects.append({"path": p, "issue": "read_warning", "message": msg})
+                    warnings_list.append({"path": p, "issue": "read_warning", "message": msg})
                 proc_img, img_stats = self.loader.preprocess_image(img)
                 header_features, header_conf = self.loader.extract_header_features(p, img_stats)
                 combined = {**header_features, **img_stats}
@@ -177,7 +178,7 @@ class ClassifierService:
                         proc_img = proc_img[..., :1]
                 # flag degenerate images (near-constant)
                 if not np.isfinite(proc_img).all() or float(np.std(proc_img)) < 1e-6:
-                    defects.append({"path": p, "issue": "degenerate_image", "message": "non-finite or near-constant image after preprocessing"})
+                    warnings_list.append({"path": p, "issue": "degenerate_image", "message": "non-finite or near-constant image after preprocessing"})
                 images.append(proc_img.astype(np.float32))
                 feats.append(feat_arr)
                 confs.append(conf_arr)
@@ -191,11 +192,12 @@ class ClassifierService:
                     np.zeros((0, len(confs[0]) if confs else 0), dtype=np.float32),
                     ok_paths,
                     errors,
-                    defects)
+                    defects,
+                    warnings_list)
         images_np = np.stack(images, axis=0)
         feats_np = np.stack(feats, axis=0)
         confs_np = np.stack(confs, axis=0)
-        return images_np, feats_np, confs_np, ok_paths, errors, defects
+        return images_np, feats_np, confs_np, ok_paths, errors, defects, warnings_list
 
     def predict_paths(self,
                       paths: List[str],
@@ -205,10 +207,12 @@ class ClassifierService:
         total = len(paths)
         start_time = time.time()
         defects_all: List[Dict[str, Any]] = []
+        warnings_all: List[Dict[str, Any]] = []
         for i in range(0, total, batch_size):
             chunk = paths[i:i + batch_size]
-            images_b, feats_b, conf_b, ok_paths, errors, defects = self._prepare_items(chunk)
+            images_b, feats_b, conf_b, ok_paths, errors, defects, warns = self._prepare_items(chunk)
             defects_all.extend(defects)
+            warnings_all.extend(warns)
             for err in errors:
                 results.append({"path": err.split(":")[0], "error": err})
             if images_b.shape[0] == 0:
@@ -252,7 +256,7 @@ class ClassifierService:
             "classes": self.class_names,
             "elapsed_sec": elapsed,
         }
-        return {"meta": meta, "results": results, "defects": defects_all}
+        return {"meta": meta, "results": results, "defects": defects_all, "warnings": warnings_all}
 
 
 def scan_directory_recursive(input_dir: str) -> List[str]:
@@ -281,7 +285,8 @@ def main():
     fs.add_argument("--unknown_id", type=int, default=None)
     fs.add_argument("--batch_size", type=int, default=32)
     fs.add_argument("--include_probs", action="store_true", help="Include per-class probabilities in the JSON")
-    fs.add_argument("--defect_log", type=str, default=None, help="Optional path to write a separate defect log JSON")
+    fs.add_argument("--defect_log", type=str, default=None, help="Optional path to write a separate defect log JSON (exceptions only)")
+    fs.add_argument("--warn_log", type=str, default=None, help="Optional path to write a separate warnings log JSON (non-fatal issues)")
 
     args = parser.parse_args()
 
@@ -315,6 +320,13 @@ def main():
                 json.dump(payload.get("defects", []), f, indent=2)
             os.replace(tmp_def, args.defect_log)
             print(f"Wrote {len(payload.get('defects', []))} defect entries to {args.defect_log}")
+        # Optional warnings log
+        if args.warn_log:
+            tmp_warn = args.warn_log + ".tmp"
+            with open(tmp_warn, "w") as f:
+                json.dump(payload.get("warnings", []), f, indent=2)
+            os.replace(tmp_warn, args.warn_log)
+            print(f"Wrote {len(payload.get('warnings', []))} warning entries to {args.warn_log}")
 
 
 if __name__ == "__main__":
