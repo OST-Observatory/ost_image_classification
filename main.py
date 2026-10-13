@@ -48,7 +48,8 @@ def build_optimizer_with_cosine(initial_lr=1e-3, first_decay_epochs=5, steps_per
 
 def main():
     parser = argparse.ArgumentParser(description="Train multimodal classifier with accuracy-focused, RAM-neutral strategies")
-    parser.add_argument("--data_dir", default="../image_classification_training_sample", help="Pfad zu Trainingsdaten")
+    parser.add_argument("--data_dir", default="../image_classification_training_sample", help="Pfad zu Trainingsdaten (JSON-Datei oder Verzeichnis)")
+    parser.add_argument("--base_path", type=str, default=None, help="Basis-Pfad für relative Pfade in JSON (nur bei JSON-Format)")
     parser.add_argument("--target_w", type=int, default=448, help="Bildbreite")
     parser.add_argument("--target_h", type=int, default=448, help="Bildhöhe")
     parser.add_argument("--epochs", type=int, default=50, help="Anzahl Epochen")
@@ -95,19 +96,44 @@ def main():
     
     # Load and prepare dataset
     print("Loading and preparing dataset...")
-    images, features, confidences, labels = data_loader.prepare_dataset(data_dir)
+    # Auto-detect format: JSON file if ends with .json
+    is_json_format = data_dir.lower().endswith('.json') or (os.path.isfile(data_dir) and data_dir.endswith('.json'))
     
-    # Convert labels to one-hot encoding
-    num_classes = len(data_loader.classes)
-    labels_int = labels.astype(np.int32)
-    
-    # Split dataset
-    X_train, X_test, F_train, F_test, C_train, C_test, y_train_int, y_test_int = train_test_split(
-        images, features, confidences, labels_int, test_size=0.2, random_state=42, stratify=labels_int
-    )
-    # One-hot erst NACH stratified split
-    y_train = tf.keras.utils.to_categorical(y_train_int, num_classes=num_classes)
-    y_test = tf.keras.utils.to_categorical(y_test_int, num_classes=num_classes)
+    if is_json_format:
+        # JSON format: load train and val splits directly
+        print("Detected JSON format. Loading train and val splits...")
+        images_train, features_train, confidences_train, labels_train = data_loader.prepare_dataset(data_dir, split="train", base_path=args.base_path)
+        images_val, features_val, confidences_val, labels_val = data_loader.prepare_dataset(data_dir, split="val", base_path=args.base_path)
+        
+        # Convert labels to one-hot encoding
+        num_classes = len(data_loader.classes)
+        labels_train_int = labels_train.astype(np.int32)
+        labels_val_int = labels_val.astype(np.int32)
+        
+        y_train = tf.keras.utils.to_categorical(labels_train_int, num_classes=num_classes)
+        y_val = tf.keras.utils.to_categorical(labels_val_int, num_classes=num_classes)
+        
+        # Use val as test for consistency with existing code
+        X_train, X_test = images_train, images_val
+        F_train, F_test = features_train, features_val
+        C_train, C_test = confidences_train, confidences_val
+        y_train_int, y_test_int = labels_train_int, labels_val_int
+        y_test = y_val
+    else:
+        # Directory format: load all and split
+        images, features, confidences, labels = data_loader.prepare_dataset(data_dir)
+        
+        # Convert labels to one-hot encoding
+        num_classes = len(data_loader.classes)
+        labels_int = labels.astype(np.int32)
+        
+        # Split dataset
+        X_train, X_test, F_train, F_test, C_train, C_test, y_train_int, y_test_int = train_test_split(
+            images, features, confidences, labels_int, test_size=0.2, random_state=42, stratify=labels_int
+        )
+        # One-hot erst NACH stratified split
+        y_train = tf.keras.utils.to_categorical(y_train_int, num_classes=num_classes)
+        y_test = tf.keras.utils.to_categorical(y_test_int, num_classes=num_classes)
 
     # Feature-Standardisierung (z-score) auf Trainingssplit fitten und anwenden
     feat_mean = np.mean(F_train, axis=0)

@@ -1,7 +1,8 @@
 import numpy as np
 from astropy.io import fits
 import os
-from typing import Tuple, Dict
+import json
+from typing import Tuple, Dict, Optional
 import tensorflow as tf
 from pathlib import Path
 from scipy import stats
@@ -365,9 +366,165 @@ class FITSDataLoader:
         
         return image_files
     
-    def prepare_dataset(self, data_dir: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    def prepare_dataset_from_json(self, json_path: str, split: str = "train", base_path: Optional[str] = None) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Prepare dataset from JSON format with pre-defined splits.
+        
+        Args:
+            json_path: Path to JSON file with format {"train": {"bias": [...], ...}, "val": {...}, "test": {...}}
+            split: Which split to load ("train", "val", or "test")
+            base_path: Optional base path to prepend to relative paths in JSON. If None, paths are treated as absolute.
+        
+        Returns:
+            Tuple of (images, features, confidences, labels)
+        """
+        with open(json_path, 'r') as f:
+            data = json.load(f)
+        
+        if split not in data:
+            raise ValueError(f"Split '{split}' not found in JSON. Available splits: {list(data.keys())}")
+        
+        split_data = data[split]
+        images = []
+        features = []
+        confidences = []
+        labels = []
+        
+        # Count total files first
+        total_files = sum(len(paths) for paths in split_data.values() if isinstance(paths, list))
+        processed_files = 0
+        
+        print(f"\nLoading split '{split}' from JSON: {json_path}")
+        if base_path:
+            print(f"Using base path: {base_path}")
+        print(f"Found {total_files} image files")
+        print("Processing files...")
+        
+        # Process first file to get feature size
+        first_file_processed = False
+        expected_feature_size = None
+        
+        for class_name, file_paths in split_data.items():
+            if class_name not in self.classes:
+                print(f"Warning: Unknown class '{class_name}' in JSON. Skipping...")
+                continue
+            
+            if not isinstance(file_paths, list):
+                print(f"Warning: Class '{class_name}' does not contain a list of paths. Skipping...")
+                continue
+            
+            class_idx = self.classes[class_name]
+            print(f"\nProcessing class: {class_name} ({len(file_paths)} files)")
+            
+            for file_path in file_paths:
+                # Resolve path: if base_path provided and path is relative, combine them
+                if base_path:
+                    if os.path.isabs(file_path):
+                        # Absolute path: use as-is
+                        resolved_path = file_path
+                    else:
+                        # Relative path: combine with base_path
+                        resolved_path = os.path.join(base_path, file_path)
+                else:
+                    # No base_path: assume paths are absolute
+                    resolved_path = file_path
+                if not isinstance(file_path, str):
+                    print(f"Warning: Invalid path type for class {class_name}. Skipping...")
+                    continue
+                
+                # Check file extension
+                _, ext = os.path.splitext(resolved_path)
+                if ext.lower() not in [e.lower() for e in self.supported_extensions]:
+                    continue
+                
+                try:
+                    # Load image and extract features
+                    image = self.load_image(resolved_path)
+                    processed_image, image_stats = self.preprocess_image(image)
+                    header_features, header_confidences = self.extract_header_features(resolved_path, image_stats)
+                    
+                    # Combine all features
+                    combined_features = {**header_features, **image_stats}
+                    
+                    # Print feature names for first file
+                    if not first_file_processed:
+                        print("\nFeature names:")
+                        for name in combined_features.keys():
+                            print(f"- {name}")
+                        expected_feature_size = len(combined_features)
+                        print(f"\nFeature size: {expected_feature_size}")
+                        first_file_processed = True
+                    
+                    # Convert features to numeric values
+                    numeric_features = []
+                    for value in combined_features.values():
+                        if isinstance(value, (int, float)):
+                            numeric_features.append(float(value))
+                        elif isinstance(value, str):
+                            numeric_features.append(float(len(value)))
+                        else:
+                            numeric_features.append(0.0)
+                    
+                    # Check feature size consistency
+                    if len(numeric_features) != expected_feature_size:
+                        raise ValueError(f"Feature size mismatch: expected {expected_feature_size}, got {len(numeric_features)}")
+                    
+                    # Convert confidences to numeric values
+                    numeric_confidences = []
+                    for value in header_confidences.values():
+                        if isinstance(value, (int, float)):
+                            numeric_confidences.append(float(value))
+                        else:
+                            numeric_confidences.append(0.0)
+                    
+                    # Convert to numpy arrays
+                    feature_array = np.array(numeric_features, dtype=np.float32)
+                    confidence_array = np.array(numeric_confidences, dtype=np.float32)
+                    
+                    images.append(processed_image)
+                    features.append(feature_array)
+                    confidences.append(confidence_array)
+                    labels.append(class_idx)
+                    
+                    processed_files += 1
+                    if processed_files % 10 == 0:
+                        print(f"Progress: {processed_files}/{total_files} files processed "
+                              f"({(processed_files/total_files*100):.1f}%)")
+                        
+                except Exception as e:
+                    print(f"Error processing {resolved_path}: {str(e)}")
+        
+        print(f"\nProcessing completed. Successfully processed {processed_files} of {total_files} files.")
+        
+        # Convert to numpy arrays
+        images = np.array(images)
+        features = np.array(features)
+        confidences = np.array(confidences)
+        labels = np.array(labels)
+        
+        return images, features, confidences, labels
+
+    def prepare_dataset(self, data_dir: str, split: Optional[str] = None, base_path: Optional[str] = None) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Prepare the dataset for training or evaluation.
-        Returns a tuple of (images, features, confidences, labels)."""
+        
+        Automatically detects if data_dir is a JSON file or directory:
+        - If JSON file: loads specified split (default: "train")
+        - If directory: loads from class subdirectories (legacy format)
+        
+        Args:
+            data_dir: Path to JSON file or directory with class subdirectories
+            split: For JSON format, which split to load ("train", "val", "test"). Ignored for directory format.
+            base_path: For JSON format, optional base path to prepend to relative paths. Ignored for directory format.
+        
+        Returns:
+            Tuple of (images, features, confidences, labels)
+        """
+        # Auto-detect format: JSON file if ends with .json
+        if data_dir.lower().endswith('.json') or (os.path.isfile(data_dir) and data_dir.endswith('.json')):
+            if split is None:
+                split = "train"
+            return self.prepare_dataset_from_json(data_dir, split=split, base_path=base_path)
+        
+        # Legacy directory-based format
         images = []
         features = []
         confidences = []

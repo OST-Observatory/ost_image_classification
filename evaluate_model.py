@@ -184,13 +184,20 @@ def apply_thresholds_to_predictions(proba, thresholds, strategy="gate", abstain=
                 gated_idx.append(int(top_idx[i]))
     return np.array(gated_idx, dtype=np.int32)
 
-def evaluate_model(model_path, data_dir, target_size=(350, 350), thresholds=None, auto_threshold=None, target_precision=None, pr_out_dir=None, save_thresholds_path=None, abstain_unknown=False, unknown_id=None, tta=False, temperature: float | None = None, fit_temperature: bool = False):
+def evaluate_model(model_path, data_dir, target_size=(350, 350), thresholds=None, auto_threshold=None, target_precision=None, pr_out_dir=None, save_thresholds_path=None, abstain_unknown=False, unknown_id=None, tta=False, temperature: float | None = None, fit_temperature: bool = False, base_path=None):
     # Initialize data loader
     data_loader = FITSDataLoader(target_size)
     
     # Load and prepare dataset
     print("Loading and preparing dataset...")
-    images, features, confidences, labels = data_loader.prepare_dataset(data_dir)
+    # Auto-detect format: JSON file if ends with .json
+    is_json_format = data_dir.lower().endswith('.json') or (os.path.isfile(data_dir) and data_dir.endswith('.json'))
+    if is_json_format:
+        # For evaluation, use test split from JSON
+        images, features, confidences, labels = data_loader.prepare_dataset(data_dir, split="test", base_path=base_path)
+    else:
+        # Directory format: load all
+        images, features, confidences, labels = data_loader.prepare_dataset(data_dir, base_path=base_path)
     
     # Convert labels to one-hot encoding
     num_classes = len(data_loader.classes)
@@ -360,7 +367,8 @@ def evaluate_model(model_path, data_dir, target_size=(350, 350), thresholds=None
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate multimodal classifier with optional per-class thresholds and PR analysis")
     parser.add_argument("--model_path", default="multimodal_classifier.keras")
-    parser.add_argument("--data_dir", default="../image_classification_test_sample")
+    parser.add_argument("--data_dir", default="../image_classification_test_sample", help="Path to JSON file or directory")
+    parser.add_argument("--base_path", type=str, default=None, help="Base path for relative paths in JSON (only for JSON format)")
     parser.add_argument("--target_w", type=int, default=350)
     parser.add_argument("--target_h", type=int, default=350)
     parser.add_argument("--thresholds", type=str, default=None, help="Scalar, comma list, or JSON path (list or {class: thr})")
@@ -395,4 +403,5 @@ if __name__ == "__main__":
         tta=args.tta,
         temperature=args.temperature,
         fit_temperature=args.fit_temperature,
+        base_path=args.base_path,
     )
