@@ -192,10 +192,11 @@ def main():
             ds = tf.data.Dataset.from_tensor_slices(((X, F, C), Y, sample_weights))
         else:
             ds = tf.data.Dataset.from_tensor_slices(((X, F, C), Y))
-        if shuffle:
-            ds = ds.shuffle(buffer_size=min(len(X), 10000))
+        # cache before shuffle, otherwise the order of epoch 1 is cached and repeated in every epoch
         if cache:
             ds = ds.cache()
+        if shuffle:
+            ds = ds.shuffle(buffer_size=min(len(X), 10000), reshuffle_each_iteration=True)
         if augment:
             # Use Python float inside map fns to avoid symbolic Tensor in Python bool contexts
             aug_s_val = float(args.aug_strength)
@@ -265,8 +266,8 @@ def main():
             else:
                 ds = ds.map(_aug_no_w, num_parallel_calls=tf.data.AUTOTUNE)
         ds = ds.batch(batch_size)
-        # MixUp after batching
-        if float(args.mixup_alpha) > 0.0:
+        # MixUp after batching (training data only; the validation set must stay unmixed)
+        if shuffle and float(args.mixup_alpha) > 0.0:
             alpha = float(args.mixup_alpha)
             def _sample_lambda(batch_size_tf):
                 # Beta(alpha, alpha) via Gamma

@@ -72,7 +72,52 @@ pip install -r requirements.txt
 ```
 Then add the repository directory to your `PYTHONPATH` or import directly.
 
-## Training Workflow
+## Pipeline v2 (recommended for new models)
+
+Pipeline v2 trains on the archive's manual labels with run-based splits, reads data lazily (peak memory a
+few GB instead of tens of GB) and adds features against the main production errors (light vs. dark,
+spectrum vs. dark, Einsteinturm false positives). The legacy pipeline below stays unchanged, so the current
+production model can still be evaluated for comparison.
+
+| Module | Purpose |
+|---|---|
+| `features.py` | Feature schema 2: memmap-friendly FITS/TIFF reading, percentile + asinh stretch, star count, band profile, saturation, IMAGETYP/OBJECT keywords, archive metadata |
+| `build_cache.py` | Archive export (format v2) to sharded `.npy` cache (uint8 images + features), parallel and resumable |
+| `cache_dataset.py` | Memory-mapped cache access, tf.data pipeline with balanced sampling without copies |
+| `model_v2.py`, `train.py` | CNN (image + features, feature scaling inside the model) |
+| `train_tabular.py` | LightGBM baseline on the features only (`pip install .[tabular]`) |
+| `evaluate_v2.py` | Evaluation on test and hard test, per instrument/year, calibration; compares with the legacy model |
+| `predictors.py` | Loads v2 models via their schema file `<model>_features.json` |
+
+Workflow (archive server for the export, a12 for everything else):
+```bash
+# 1. Archive: export labelled files (format v2, run-based splits, hard cases)
+python manage.py export_cnn_training_data --output export_v2.json
+
+# 2. a12: build the cache once (about 200 KB per file at 448 px)
+python build_cache.py --export export_v2.json --base_path /mnt/raid/data_archive \
+    --out /mnt/raid/classifier_cache/v2_448 --image_size 448 --workers 5
+
+# 3. a12: tabular baseline (minutes) and CNN (hours on CPU)
+python train_tabular.py --cache /mnt/raid/classifier_cache/v2_448 --out models/v2_lgbm.txt --threads 6
+python train.py --cache /mnt/raid/classifier_cache/v2_448 --out models/v2_cnn.keras --threads 6 --batch_size 32
+
+# 4. a12: evaluate against the production model; writes thresholds/temperature fitted on val
+python evaluate_v2.py --cache /mnt/raid/classifier_cache/v2_448 \
+    --model models/v2_cnn.keras --model models/v2_lgbm.txt \
+    --legacy_model multimodal_classifier_mixup_warmup_randaug_2.keras \
+    --legacy_thresholds thresholds_prod_precision.json --base_path /mnt/raid/data_archive \
+    --out reports/eval_v2.json --save_calibration
+```
+
+Deploying a v2 model needs `<model>`, `<model>_features.json` and `<model>_thresholds.json` (plus the
+temperature from `<model>_calibration.json`). `ClassifierService` recognises v2 models by the schema file,
+accepts per-file archive metadata (`predict_paths(paths, metadata={path: {"instrument", "plate_solved",
+"run_spectroscopy"}})`) and returns `top_class`/`top_score` also when abstaining. Tests: `pytest`.
+
+Measured locally (synthetic data, 448 px): cache build 0.3 GB, CNN training with batch 16 3.3 GB peak memory.
+
+## Training Workflow (legacy pipeline)
 
 ### Data Format Support
 The training script supports two data formats:
@@ -151,7 +196,7 @@ Notes:
 - Balanced sampling increases minority coverage without double-weighting (per-sample weights are disabled when balanced sampling is on).
 - Set `--loss_strategy focal_loss` to enable focal loss with automatic class-specific alpha if desired; in our tests class weights performed better overall.
 
-## Evaluation Workflow
+## Evaluation Workflow (legacy pipeline)
 Basic evaluation:
 
 **With JSON format (uses test split):**

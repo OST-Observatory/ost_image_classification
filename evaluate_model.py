@@ -48,7 +48,7 @@ def plot_confusion_matrix(y_true, y_pred, classes):
                     if cm[i, j] > 0:  # False negatives
                         print(f"    - Predicted as {other_class}: {cm[i, j]} times")
                     if cm[j, i] > 0:  # False positives
-                        print(f"    - Misclassified as {class_name}: {cm[j, i]} times")
+                        print(f"    - {other_class} misclassified as {class_name}: {cm[j, i]} times")
 
 def analyze_feature_importance(model, features, labels, feature_names):
     """Analyze feature importance using gradient-based importance."""
@@ -292,11 +292,16 @@ def evaluate_model(model_path, data_dir, target_size=(350, 350), thresholds=None
                     thrs.append(float(thr[best_idx]) if thr.size > 0 else 0.5)
             thresholds = np.array(thrs, dtype=np.float32)
 
-    # Save suggested thresholds if requested
+    # Save thresholds if requested: flat {class: threshold} as read by inference_runner.ClassifierService,
+    # i.e. the thresholds of the chosen auto_threshold method (max-F1 suggestions otherwise)
     if save_thresholds_path and suggested is not None:
+        if auto_threshold in {"max_f1", "target_precision"} and thresholds is not None:
+            flat = {name: float(thresholds[c]) for c, name in enumerate(class_names)}
+        else:
+            flat = {name: float(s['best_f1_threshold']) for name, s in suggested.items()}
         with open(save_thresholds_path, 'w') as f:
-            json.dump(suggested, f, indent=2)
-        print(f"Saved threshold suggestions to: {save_thresholds_path}")
+            json.dump(flat, f, indent=2)
+        print(f"Saved thresholds to: {save_thresholds_path}")
     
     # Calculate accuracy with/without thresholds
     y_pred_argmax = np.argmax(proba, axis=1)
@@ -369,8 +374,8 @@ if __name__ == "__main__":
     parser.add_argument("--model_path", default="multimodal_classifier.keras")
     parser.add_argument("--data_dir", default="../image_classification_test_sample", help="Path to JSON file or directory")
     parser.add_argument("--base_path", type=str, default=None, help="Base path for relative paths in JSON (only for JSON format)")
-    parser.add_argument("--target_w", type=int, default=350)
-    parser.add_argument("--target_h", type=int, default=350)
+    parser.add_argument("--target_w", type=int, default=448)
+    parser.add_argument("--target_h", type=int, default=448)
     parser.add_argument("--thresholds", type=str, default=None, help="Scalar, comma list, or JSON path (list or {class: thr})")
     parser.add_argument("--auto_threshold", choices=[None, "max_f1", "target_precision"], default=None)
     parser.add_argument("--target_precision", type=float, default=None, help="Target precision for auto_threshold=target_precision")

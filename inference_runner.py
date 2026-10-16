@@ -8,8 +8,10 @@ from typing import List, Dict, Any, Optional, Tuple
 
 import numpy as np
 
+import features
 from data_loader import FITSDataLoader
 from model import MultiModalClassifier
+from predictors import V2Predictor, load_schema
 
 
 SUPPORTED_EXTS = {'.fit', '.fits', '.tif', '.tiff', '.FIT', '.FITS', '.TIF', '.TIFF'}
@@ -68,28 +70,38 @@ class ClassifierService:
         self.unknown_id_custom = unknown_id
         self.target_size = target_size
 
-        # Loader (reuses training preprocessing)
-        self.loader = FITSDataLoader(target_size=self.target_size)
-        self.classes = self.loader.classes  # name -> idx
-        self.class_names = list(self.classes.keys())
+        # v2 models (feature schema 2) come with <model stem>_features.json; legacy models without
+        self.schema = load_schema(self.model_path)
+        self.v2 = V2Predictor(self.model_path, self.schema, tta=self.tta) if self.schema else None
+        if self.v2 is not None:
+            self.loader = None
+            self.class_names = list(self.v2.classes)
+            self.classes = {name: i for i, name in enumerate(self.class_names)}
+            self.target_size = (self.v2.image_size, self.v2.image_size)
+        else:
+            # Loader (reuses training preprocessing)
+            self.loader = FITSDataLoader(target_size=self.target_size)
+            self.classes = self.loader.classes  # name -> idx
+            self.class_names = list(self.classes.keys())
         self.num_classes = len(self.classes)
         self.unknown_id = self.num_classes if self.unknown_id_custom is None else int(self.unknown_id_custom)
 
-        # Model
-        self.model = MultiModalClassifier(input_shape=(*self.target_size, 1), num_classes=self.num_classes)
-        self.model.load(self.model_path)
-
-        # Feature scaler
-        base, _ = os.path.splitext(self.model_path)
-        scaler_path = base + "_feat_scaler.npz"
         self.feat_mean = None
         self.feat_std = None
-        if os.path.exists(scaler_path):
-            scaler = np.load(scaler_path)
-            self.feat_mean = scaler.get('mean')
-            self.feat_std = scaler.get('std')
-            if self.feat_mean is not None and self.feat_std is not None:
-                self.feat_std = np.where(self.feat_std < 1e-6, 1.0, self.feat_std)
+        if self.v2 is None:
+            # Model
+            self.model = MultiModalClassifier(input_shape=(*self.target_size, 1), num_classes=self.num_classes)
+            self.model.load(self.model_path)
+
+            # Feature scaler
+            base, _ = os.path.splitext(self.model_path)
+            scaler_path = base + "_feat_scaler.npz"
+            if os.path.exists(scaler_path):
+                scaler = np.load(scaler_path)
+                self.feat_mean = scaler.get('mean')
+                self.feat_std = scaler.get('std')
+                if self.feat_mean is not None and self.feat_std is not None:
+                    self.feat_std = np.where(self.feat_std < 1e-6, 1.0, self.feat_std)
 
         # Thresholds
         self.thresholds = np.full(self.num_classes, 0.5, dtype=np.float32)
@@ -199,9 +211,30 @@ class ClassifierService:
         confs_np = np.stack(confs, axis=0)
         return images_np, feats_np, confs_np, ok_paths, errors, defects, warnings_list
 
+    def _prepare_items_v2(self, paths: List[str], metadata: Optional[Dict[str, dict]]):
+        images, vectors, ok_paths, errors, defects = [], [], [], [], []
+        for p in paths:
+            try:
+                image, vector = features.extract(p, metadata=(metadata or {}).get(p), image_size=self.v2.image_size)
+            except Exception as e:
+                errors.append(f"{p}: {e}")
+                defects.append({"path": p, "issue": "exception", "message": str(e)})
+                continue
+            images.append(image)
+            vectors.append(vector)
+            ok_paths.append(p)
+        images_np = np.stack(images).astype(np.float32)[..., None] / 255.0 if images else None
+        vectors_np = np.stack(vectors) if vectors else None
+        return images_np, vectors_np, ok_paths, errors, defects
+
     def predict_paths(self,
                       paths: List[str],
-                      batch_size: int = 32) -> Dict[str, Any]:
+                      batch_size: int = 32,
+                      metadata: Optional[Dict[str, dict]] = None) -> Dict[str, Any]:
+        """
+        Classify files. ``metadata`` (v2 models only, ignored by legacy models) maps a path to archive
+        metadata: {"instrument": canonical camera name, "plate_solved": bool, "run_spectroscopy": bool}.
+        """
         # Chunk inputs
         results = []
         total = len(paths)
@@ -210,14 +243,21 @@ class ClassifierService:
         warnings_all: List[Dict[str, Any]] = []
         for i in range(0, total, batch_size):
             chunk = paths[i:i + batch_size]
-            images_b, feats_b, conf_b, ok_paths, errors, defects, warns = self._prepare_items(chunk)
+            if self.v2 is not None:
+                images_b, feats_b, ok_paths, errors, defects = self._prepare_items_v2(chunk, metadata)
+                warns = []
+            else:
+                images_b, feats_b, conf_b, ok_paths, errors, defects, warns = self._prepare_items(chunk)
             defects_all.extend(defects)
             warnings_all.extend(warns)
             for err in errors:
                 results.append({"path": err.split(":")[0], "error": err})
-            if images_b.shape[0] == 0:
+            if not ok_paths:
                 continue
-            proba = self._predict_batch(images_b, feats_b, conf_b)
+            if self.v2 is not None:
+                proba = self.v2.predict(images_b, feats_b)
+            else:
+                proba = self._predict_batch(images_b, feats_b, conf_b)
             # Temperature scaling
             proba = softmax_with_temperature(probs=proba, temperature=self.temperature)
             # Threshold gating
@@ -231,6 +271,9 @@ class ClassifierService:
                     "class_id": int(pred_labels[j]),
                     "score": score,
                     "abstained": bool(abstained[j]),
+                    # Best class even when abstaining (suggestion for manual review)
+                    "top_class": self.class_names[top_idx],
+                    "top_score": score,
                 }
                 # include per-class probabilities only if requested by caller (handled in CLI)
                 record["_probs"] = proba[j].tolist()
@@ -245,6 +288,7 @@ class ClassifierService:
         meta = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "model_path": self.model_path,
+            "feature_schema": self.schema.get("schema_version") if self.schema else "legacy",
             "thresholds_path": self.thresholds_path,
             "temperature": self.temperature,
             "tta": self.tta,

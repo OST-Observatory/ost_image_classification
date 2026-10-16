@@ -7,7 +7,7 @@ name = "ost-image-classification"
 version = "1.0.0"
 description = "Multimodal image classifier for astronomical data (FITS/TIFF)"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [
     {name = "OST-Observatory"}
 ]
@@ -16,7 +16,6 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Astronomy",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -26,6 +25,7 @@ classifiers = [
 dependencies = [
     "numpy>=1.21.0",
     "astropy>=5.0.0",
+    "scipy>=1.7.0",
     "tensorflow>=2.8.0",
     "scikit-learn>=1.0.0",
     "matplotlib>=3.5.0",
@@ -35,6 +35,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# LightGBM baseline (train_tabular.py) and lightgbm models in the inference runner
+tabular = [
+    "lightgbm>=4.0",
+]
 dev = [
     "pytest>=7.0",
     "black>=22.0",
@@ -51,6 +55,14 @@ py-modules = [
     "main",
     "evaluate_model",
     "inference_runner",
+    "features",
+    "predictors",
+    "build_cache",
+    "cache_dataset",
+    "model_v2",
+    "train",
+    "train_tabular",
+    "evaluate_v2",
 ]
 
 [tool.setuptools.package-data]
@@ -58,3 +70,6 @@ py-modules = [
     "thresholds_*.json",
     "*.md",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
