@@ -4,6 +4,9 @@ __pycache__/
 *$py.class
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # Virtual environments
 .env
@@ -16,6 +19,7 @@ env/
 Thumbs.db
 .idea/
 .vscode/
+*.code-workspace
 
 # Build / packaging
 build/
@@ -50,6 +54,24 @@ thresholds_balanced.json
 
 # Saved scalers
 *_feat_scaler.npz
+
+# Pipeline v2 (README "Pipeline v2"): models and reports directories, files written next to a model
+models/
+reports/
+*_features.json
+*_calibration.json
+*_thresholds.json
+*_history.csv
+# LightGBM models are .txt files: ignored via models/ (a global *.txt would hit requirements.txt)
+
+# Pipeline v2 feature/image cache (normally outside the repo, e.g. /mnt/raid/classifier_cache)
+cache/
+*.npy
+shard_*.meta.json
+errors.jsonl
+
+# Archive exports (export_cnn_training_data); the tracked cnn_training_data.json is not affected
+export*.json
 
 # Jupyter
 .ipynb_checkpoints/
