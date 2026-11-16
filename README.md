@@ -107,8 +107,12 @@ python evaluate_v2.py --cache /mnt/raid/classifier_cache/v2_448 \
     --model models/v2_cnn.keras --model models/v2_lgbm.txt \
     --legacy_model multimodal_classifier_mixup_warmup_randaug_2.keras \
     --legacy_thresholds thresholds_prod_precision.json --base_path /mnt/raid/data_archive \
-    --out reports/eval_v2.json --save_calibration
+    --out reports/eval_v2.json --save_calibration \
+    --exclude_paths cnn_training_data.json   # files the legacy model was trained on: fair comparison
 ```
+Besides overall accuracy the evaluation reports a run-weighted accuracy (every run counts equally) and the
+runs with the most errors, with example files. The export caps files per run and class (`--max-per-run`,
+default 500), so a single large capture series cannot dominate a split.
 
 Deploying a v2 model needs `<model>`, `<model>_features.json` and `<model>_thresholds.json` (plus the
 temperature from `<model>_calibration.json`). `ClassifierService` recognises v2 models by the schema file,

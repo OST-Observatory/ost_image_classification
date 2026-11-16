@@ -106,6 +106,18 @@ def test_evaluate_v2(small_cache, cnn_model, lgbm_model, tmp_path):
     for path in (cnn_model, lgbm_model):
         result = report['models'][path]
         assert result['all']['n'] == 9 and result['hard']['n'] == 3
-        assert {'accuracy', 'exposure_accuracy', 'ece', 'coverage', 'by_instrument', 'per_class'} <= set(result['all'])
+        assert {'accuracy', 'exposure_accuracy', 'ece', 'coverage', 'by_instrument', 'per_class',
+                'run_accuracy', 'worst_runs'} <= set(result['all'])
         thresholds = json.load(open(os.path.splitext(path)[0] + '_thresholds.json'))
         assert set(thresholds) == set(features.CLASSES)  # flat {class: threshold}, readable by the runner
+
+
+def test_evaluate_excludes_paths(small_cache, lgbm_model, tmp_path):
+    import evaluate_v2
+    test_paths = [r['path'] for r in small_cache['records'] if r['split'] == 'test'][:4]
+    legacy_export = tmp_path / 'legacy.json'
+    legacy_export.write_text(json.dumps({'train': {'darks': test_paths}}))
+    out = tmp_path / 'report.json'
+    evaluate_v2.main(['--cache', small_cache['cache'], '--model', lgbm_model, '--out', str(out),
+                      '--exclude_paths', str(legacy_export)])
+    assert json.loads(out.read_text())['models'][lgbm_model]['all']['n'] == 9 - 4

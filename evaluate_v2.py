@@ -87,7 +87,27 @@ def _group_accuracy(groups, correct):
     return {str(k): {'n': len(v), 'accuracy': round(float(np.mean(v)), 4)} for k, v in sorted(by.items(), key=lambda kv: -len(kv[1]))}
 
 
-def metrics(proba, labels, classes, thresholds=None, instruments=None, years=None):
+def run_statistics(pred, labels, classes, runs, paths, worst=10, examples=3):
+    """Accuracy with every run weighted equally, and the runs with the most errors (with example files)."""
+    by_run = defaultdict(list)
+    for i, run in enumerate(runs):
+        by_run[run].append(i)
+    accuracies = [float(np.mean(pred[idx] == labels[idx])) for idx in by_run.values()]
+    worst_runs = []
+    for run, idx in sorted(by_run.items(), key=lambda kv: -int(np.sum(pred[kv[1]] != labels[kv[1]])))[:worst]:
+        wrong = [i for i in idx if pred[i] != labels[i]]
+        if not wrong:
+            break
+        confusion = Counter(f'{classes[labels[i]]} -> {classes[pred[i]]}' for i in wrong)
+        worst_runs.append({
+            'run': run, 'n': len(idx), 'errors': len(wrong), 'accuracy': round(1 - len(wrong) / len(idx), 4),
+            'main_error': confusion.most_common(1)[0][0],
+            'examples': [f'{paths[i]}  ({classes[labels[i]]} -> {classes[pred[i]]})' for i in wrong[:examples]],
+        })
+    return {'run_accuracy': round(float(np.mean(accuracies)), 4), 'runs': len(by_run), 'worst_runs': worst_runs}
+
+
+def metrics(proba, labels, classes, thresholds=None, instruments=None, years=None, runs=None, paths=None):
     from sklearn.metrics import classification_report, confusion_matrix
     if not len(labels):
         return {'n': 0}
@@ -122,6 +142,8 @@ def metrics(proba, labels, classes, thresholds=None, instruments=None, years=Non
         result['by_instrument'] = _group_accuracy(instruments, correct)
     if years is not None:
         result['by_year'] = _group_accuracy(years, correct)
+    if runs is not None:
+        result.update(run_statistics(pred, labels, classes, runs, paths or [''] * len(runs)))
     return result
 
 
@@ -148,10 +170,21 @@ def evaluate_split(proba, index, selection, labels, classes, thresholds):
     hard = np.array(index.column(selection, 'hard'), dtype=bool)
     instruments = index.column(selection, 'instruments')
     years = index.column(selection, 'years')
+    runs = index.column(selection, 'runs')
+    paths = index.column(selection, 'paths')
     return {
-        'all': metrics(proba, labels, classes, thresholds, instruments, years),
+        'all': metrics(proba, labels, classes, thresholds, instruments, years, runs, paths),
         'hard': metrics(proba[hard], labels[hard], classes, thresholds),
     }
+
+
+def load_paths(path):
+    """Relative file paths of an export (v2: {'files': [{'path'}]}, v1: {split: {class: [paths]}})."""
+    with open(path) as f:
+        data = json.load(f)
+    if isinstance(data.get('files'), list):
+        return {record['path'] for record in data['files']}
+    return {p for split in data.values() if isinstance(split, dict) for paths in split.values() for p in paths}
 
 
 def main(argv=None):
@@ -164,13 +197,23 @@ def main(argv=None):
     parser.add_argument('--split', default='test')
     parser.add_argument('--target_precision', type=float, default=0.95)
     parser.add_argument('--out', required=True, help='Report JSON')
+    parser.add_argument('--exclude_paths', action='append', default=[],
+                        help='Export JSON (v1 or v2) whose files are removed from the test split for all models, '
+                             'e.g. the legacy training data cnn_training_data.json (repeatable)')
     parser.add_argument('--save_calibration', action='store_true',
                         help='Write <model stem>_thresholds.json and _calibration.json (temperature) per v2 model')
     args = parser.parse_args(argv)
 
     index = CacheIndex(args.cache)
     val_sel, test_sel = index.select('val'), index.select(args.split)
-    report = {'cache': args.cache, 'split': args.split, 'models': {}}
+    excluded = set()
+    for path in args.exclude_paths:
+        excluded |= load_paths(path)
+    if excluded:
+        before = len(test_sel)
+        test_sel = [sel for sel, p in zip(test_sel, index.column(test_sel, 'paths')) if p not in excluded]
+        print(f'Excluded {before - len(test_sel)} of {before} test files listed in {", ".join(args.exclude_paths)}')
+    report = {'cache': args.cache, 'split': args.split, 'excluded_test_files': args.exclude_paths, 'models': {}}
 
     for model_path in args.model:
         schema = load_schema(model_path)
@@ -218,14 +261,21 @@ def main(argv=None):
     with open(args.out, 'w') as f:
         json.dump(report, f, indent=1)
 
-    print(f"{'model':<48} {'n':>6} {'acc':>7} {'hard':>7} {'expo':>7} {'LI->DA':>7} {'DA->LI':>7} {'ECE':>6} {'cov':>6} {'acc@cov':>8}")
+    print(f"{'model':<48} {'n':>6} {'acc':>7} {'run-acc':>8} {'hard':>7} {'expo':>7} {'LI->DA':>7} {'DA->LI':>7} "
+          f"{'ECE':>6} {'cov':>6} {'acc@cov':>8}")
     for name, result in report['models'].items():
         a, h = result['all'], result['hard']
-        print(f"{os.path.basename(name):<48} {a['n']:>6} {a['accuracy']:>7} {h.get('accuracy', '-'):>7} "
-              f"{a['exposure_accuracy']:>7} {a['exposure_errors'].get('LI -> DA', 0):>7} "
+        print(f"{os.path.basename(name):<48} {a['n']:>6} {a['accuracy']:>7} {a.get('run_accuracy', '-'):>8} "
+              f"{h.get('accuracy', '-'):>7} {a['exposure_accuracy']:>7} {a['exposure_errors'].get('LI -> DA', 0):>7} "
               f"{a['exposure_errors'].get('DA -> LI', 0):>7} {a['ece']:>6} {a.get('coverage', '-'):>6} "
               f"{a.get('accuracy_at_coverage', '-'):>8}")
-    print(f'Report written to {args.out}')
+    for name, result in report['models'].items():
+        print(f"\nRuns with most errors: {os.path.basename(name)}")
+        for entry in result['all'].get('worst_runs', [])[:5]:
+            print(f"  run {entry['run']}: {entry['errors']}/{entry['n']} wrong, mostly {entry['main_error']}")
+            for example in entry['examples']:
+                print(f'      {example}')
+    print(f'\nReport written to {args.out}')
 
 
 if __name__ == '__main__':
