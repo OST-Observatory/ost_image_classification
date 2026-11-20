@@ -21,7 +21,7 @@ import numpy as np
 
 import features
 from cache_dataset import CacheIndex
-from predictors import V2Predictor, load_schema
+from predictors import ENSEMBLE_FORMAT, V2Predictor, load_schema
 
 TEMPERATURES = np.round(np.arange(0.3, 3.01, 0.1), 2)
 
@@ -188,6 +188,30 @@ def ensemble_name(members):
     return 'ensemble(' + ' + '.join(f'{os.path.basename(p)}*{w:g}' for p, w in members) + ')'
 
 
+def ensemble_path(members):
+    """Ensemble file next to the first member, e.g. models/v2b_cnn+v2b_lgbm_ensemble.json (weights != 1 in the name)."""
+    stems = [os.path.splitext(os.path.basename(p))[0] + ('' if w == 1 else f'x{w:g}') for p, w in members]
+    return os.path.join(os.path.dirname(members[0][0]), '+'.join(stems) + '_ensemble.json')
+
+
+def save_ensemble(members, weights, classes, temperature, thresholds, target_precision):
+    """Write the ensemble file read by ClassifierService (member paths relative to the file)."""
+    path = ensemble_path(members)
+    base = os.path.dirname(os.path.abspath(path))
+    config = {
+        'format': ENSEMBLE_FORMAT,
+        'members': [{'model': os.path.relpath(os.path.abspath(p), base), 'weight': float(w)}
+                    for (p, _), w in zip(members, weights)],
+        'classes': list(classes),
+        'temperature': temperature,
+        'thresholds': thresholds,
+        'target_precision': target_precision,
+    }
+    with open(path, 'w') as f:
+        json.dump(config, f, indent=1)
+    return path
+
+
 def load_paths(path):
     """Relative file paths of an export (v2: {'files': [{'path'}]}, v1: {split: {class: [paths]}})."""
     with open(path) as f:
@@ -214,7 +238,8 @@ def main(argv=None):
                         help='Export JSON (v1 or v2) whose files are removed from the test split for all models, '
                              'e.g. the legacy training data cnn_training_data.json (repeatable)')
     parser.add_argument('--save_calibration', action='store_true',
-                        help='Write <model stem>_thresholds.json and _calibration.json (temperature) per v2 model')
+                        help='Write <model stem>_thresholds.json and _calibration.json (temperature) per v2 model '
+                             'and <stem>+<stem>_ensemble.json per ensemble (loadable by ClassifierService)')
     args = parser.parse_args(argv)
 
     index = CacheIndex(args.cache)
@@ -274,8 +299,12 @@ def main(argv=None):
         weights /= weights.sum()
         raw_val = sum(w * out[2] for w, out in zip(weights, outputs))
         raw_test = sum(w * out[3] for w, out in zip(weights, outputs))
-        evaluate(ensemble_name(members), 'ensemble', classes, raw_val, raw_test)
+        temperature, thresholds = evaluate(ensemble_name(members), 'ensemble', classes, raw_val, raw_test)
         report['models'][ensemble_name(members)]['members'] = {p: float(w) for (p, _), w in zip(members, weights)}
+        if args.save_calibration:
+            path = save_ensemble(members, weights, classes, temperature, thresholds, args.target_precision)
+            report['models'][ensemble_name(members)]['ensemble_file'] = path
+            print(f'Ensemble written to {path}')
 
     if args.legacy_model:
         paths = index.column(test_sel, 'paths')

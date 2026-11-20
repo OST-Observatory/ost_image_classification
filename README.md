@@ -112,12 +112,17 @@ python evaluate_v2.py --cache /mnt/raid/classifier_cache/v2_448 \
 ```
 `--ensemble MODEL[=WEIGHT] MODEL[=WEIGHT] ...` evaluates the weighted mean of the class probabilities of
 several v2 models (own temperature and thresholds, fitted on val); repeatable for several combinations.
+With `--save_calibration` every ensemble is also written as a file next to its first member, e.g.
+`models/v2b_cnn+v2b_lgbm_ensemble.json` (members relative to the file, weights, temperature, thresholds).
 Besides overall accuracy the evaluation reports a run-weighted accuracy (every run counts equally) and the
 runs with the most errors, with example files. The export caps files per run and class (`--max-per-run`,
 default 500), so a single large capture series cannot dominate a split.
 
-Deploying a v2 model needs `<model>`, `<model>_features.json` and `<model>_thresholds.json` (plus the
-temperature from `<model>_calibration.json`). `ClassifierService` recognises v2 models by the schema file,
+Deploying a v2 model needs `<model>`, `<model>_features.json`, `<model>_thresholds.json` and
+`<model>_calibration.json` in one directory; an ensemble additionally needs its `_ensemble.json` and all
+members with their files. `ClassifierService(model_path)` accepts a v2 model or an ensemble file and uses the
+saved temperature and thresholds unless `temperature`/`thresholds_path` are given explicitly (LightGBM
+members need the `lightgbm` package). `ClassifierService` recognises v2 models by the schema file,
 accepts per-file archive metadata (`predict_paths(paths, metadata={path: {"instrument", "plate_solved",
 "run_spectroscopy"}})`) and returns `top_class`/`top_score` also when abstaining. Tests: `pytest`.
 

@@ -29,8 +29,10 @@ Measured peak memory (synthetic, 448 px): cache build 0.3 GB, CNN training batch
 Next (a12, see README for the commands):
 1. [ ] Export v2 on the archive server, build the cache on a12
 2. [ ] Train `train_tabular.py` and `train.py`; run `evaluate_v2.py` against the legacy model
-3. [ ] Decide: CNN, LightGBM or hybrid (LightGBM for the exposure type, CNN for spectrograph/calibration); roll out only if better on the hard test set and per instrument
-4. [ ] Optional: input size 256 vs. 448 and `--separable` for faster CPU training; JPG/CR2 support only if needed; pretrained backbone if a GPU becomes available
+3. [x] Decide: CNN, LightGBM or hybrid. Evaluation 2026-11-20 (v2b, full test split, 2730 files, 73 runs): ensemble CNN + LightGBM 1:1 best (run-acc 0.948, LI->DA 4, DA->LI 7, ECE 0.022; CNN 0.920, LightGBM 0.934). The models fail on different runs (CNN: Skyris H-alpha sun, old SBIG darks; LightGBM: moon 2018-07-06). Ensemble files are written by `evaluate_v2.py --save_calibration` and loaded by `ClassifierService`
+4. [ ] Underexposed arc frames (run 2024-12-12, DADOS Ar-Ne 1 s, QHY 268M, IMAGETYP "Light Frame"): LightGBM and the ensemble call 97-100 of 113 darks, the CNN 17. Check after the next export (more such runs in training?); candidate feature: line contrast of the band profile relative to the noise
+5. [ ] Bias has no files in the test split of the v2b export (2026-04-10 relabelled from darks to bias); check `missing_classes` of the next export
+6. [ ] Optional: input size 256 vs. 448 and `--separable` for faster CPU training; JPG/CR2 support only if needed; pretrained backbone if a GPU becomes available
 
 ### Smaller bugs
 

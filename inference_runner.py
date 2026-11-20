@@ -11,7 +11,7 @@ import numpy as np
 import features
 from data_loader import FITSDataLoader
 from model import MultiModalClassifier
-from predictors import V2Predictor, load_schema
+from predictors import load_ensemble, load_predictor, load_schema
 
 
 SUPPORTED_EXTS = {'.fit', '.fits', '.tif', '.tiff', '.FIT', '.FITS', '.TIF', '.TIFF'}
@@ -57,22 +57,32 @@ class ClassifierService:
     def __init__(self,
                  model_path: str,
                  thresholds_path: Optional[str] = None,
-                 temperature: float = 0.7,
+                 temperature: Optional[float] = None,
                  tta: bool = False,
                  abstain_unknown: bool = True,
                  unknown_id: Optional[int] = None,
                  target_size: Tuple[int, int] = (448, 448)) -> None:
+        """
+        ``model_path``: legacy model, v2 model or ensemble file (evaluate_v2.py --save_calibration). Without
+        explicit ``temperature``/``thresholds_path`` the calibration fitted on val is used for v2 models and
+        ensembles (<model stem>_calibration.json / _thresholds.json, or the ensemble file); otherwise
+        temperature 1.0 (v2) or 0.7 (legacy, as validated) and threshold 0.5 per class.
+        """
         self.model_path = model_path
         self.thresholds_path = thresholds_path
-        self.temperature = float(temperature)
         self.tta = bool(tta)
         self.abstain_unknown = bool(abstain_unknown)
         self.unknown_id_custom = unknown_id
         self.target_size = target_size
 
-        # v2 models (feature schema 2) come with <model stem>_features.json; legacy models without
-        self.schema = load_schema(self.model_path)
-        self.v2 = V2Predictor(self.model_path, self.schema, tta=self.tta) if self.schema else None
+        # v2 models (feature schema 2) come with <model stem>_features.json, ensembles are JSON files
+        # listing v2 models; legacy models have neither
+        self.v2, calibration = load_predictor(self.model_path, tta=self.tta)
+        calibration = calibration or {}
+        self.schema = self.v2.schema if self.v2 is not None else None
+        if temperature is None:
+            temperature = calibration.get('temperature', 1.0 if self.v2 is not None else 0.7)
+        self.temperature = float(temperature)
         if self.v2 is not None:
             self.loader = None
             self.class_names = list(self.v2.classes)
@@ -105,9 +115,13 @@ class ClassifierService:
 
         # Thresholds
         self.thresholds = np.full(self.num_classes, 0.5, dtype=np.float32)
+        data = None
         if thresholds_path:
             with open(thresholds_path, 'r') as f:
                 data = json.load(f)
+        elif 'thresholds' in calibration:
+            data = calibration['thresholds']
+        if data is not None:
             if isinstance(data, dict):
                 thr = np.zeros(self.num_classes, dtype=np.float32)
                 for name, idx in self.classes.items():
@@ -288,6 +302,7 @@ class ClassifierService:
         meta = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "model_path": self.model_path,
+            "model_kind": self.v2.kind if self.v2 is not None else "legacy",
             "feature_schema": self.schema.get("schema_version") if self.schema else "legacy",
             "thresholds_path": self.thresholds_path,
             "temperature": self.temperature,
@@ -322,8 +337,11 @@ def main():
     fs.add_argument("--input_dir", required=True)
     fs.add_argument("--output_json", required=True)
     fs.add_argument("--model_path", required=True)
-    fs.add_argument("--thresholds", default="thresholds_prod_precision.json")
-    fs.add_argument("--temperature", type=float, default=0.7)
+    fs.add_argument("--thresholds", default=None,
+                    help="Thresholds JSON; default: calibration of a v2 model/ensemble, "
+                         "thresholds_prod_precision.json for legacy models")
+    fs.add_argument("--temperature", type=float, default=None,
+                    help="Default: calibration of a v2 model/ensemble, else 0.7 (legacy)")
     fs.add_argument("--tta", action="store_true")
     fs.add_argument("--abstain_unknown", action="store_true")
     fs.add_argument("--unknown_id", type=int, default=None)
@@ -335,9 +353,12 @@ def main():
     args = parser.parse_args()
 
     if args.cmd == "filesystem":
+        thresholds = args.thresholds
+        if thresholds is None and load_schema(args.model_path) is None and load_ensemble(args.model_path) is None:
+            thresholds = "thresholds_prod_precision.json"  # legacy model: previous default
         svc = ClassifierService(
             model_path=args.model_path,
-            thresholds_path=args.thresholds,
+            thresholds_path=thresholds,
             temperature=args.temperature,
             tta=bool(args.tta),
             abstain_unknown=bool(args.abstain_unknown),

@@ -135,6 +135,59 @@ def test_evaluate_ensemble(small_cache, cnn_model, lgbm_model, tmp_path):
     assert lgbm_model in models
 
 
+def test_ensemble_file_in_classifier_service(small_cache, cnn_model, lgbm_model, tmp_path):
+    import evaluate_v2
+    from inference_runner import ClassifierService
+    evaluate_v2.main(['--cache', small_cache['cache'], '--ensemble', cnn_model, f'{lgbm_model}=3',
+                      '--out', str(tmp_path / 'report.json'), '--save_calibration'])
+    path = os.path.join(os.path.dirname(cnn_model), 'cnn+lgbmx3_ensemble.json')
+    config = json.load(open(path))
+    assert [m['model'] for m in config['members']] == ['cnn.keras', 'lgbm.txt']
+    assert [m['weight'] for m in config['members']] == [0.25, 0.75]
+
+    paths = [os.path.join(small_cache['archive'], r['path']) for r in small_cache['records'][:4]]
+    service = ClassifierService(path)  # temperature and thresholds from the ensemble file
+    assert service.temperature == config['temperature']
+    assert service.thresholds.tolist() == pytest.approx([config['thresholds'][c] for c in service.class_names])
+    payload = service.predict_paths(paths, batch_size=3)
+    assert payload['meta']['model_kind'] == 'ensemble' and len(payload['results']) == 4
+
+    members = [ClassifierService(m, temperature=1.0) for m in (cnn_model, lgbm_model)]
+    probs = [np.array([r['_probs'] for r in m.predict_paths(paths, batch_size=3)['results']]) for m in members]
+    expected = evaluate_v2.apply_temperature(0.25 * probs[0] + 0.75 * probs[1], config['temperature'])
+    actual = np.array([r['_probs'] for r in payload['results']])
+    assert np.allclose(actual, expected, atol=1e-5)
+
+
+def test_single_model_uses_saved_calibration(small_cache, lgbm_model, tmp_path):
+    import evaluate_v2
+    from inference_runner import ClassifierService
+    assert ClassifierService(lgbm_model).temperature == 1.0  # no calibration saved yet
+    evaluate_v2.main(['--cache', small_cache['cache'], '--model', lgbm_model, '--out', str(tmp_path / 'r.json'),
+                      '--save_calibration'])
+    stem = os.path.splitext(lgbm_model)[0]
+    calibration = json.load(open(stem + '_calibration.json'))
+    thresholds = json.load(open(stem + '_thresholds.json'))
+    service = ClassifierService(lgbm_model)
+    assert service.temperature == calibration['temperature']
+    assert service.thresholds.tolist() == pytest.approx([thresholds[c] for c in service.class_names])
+    assert ClassifierService(lgbm_model, temperature=2.0).temperature == 2.0  # explicit value wins
+
+
+def test_ensemble_rejects_mismatching_members(small_cache, cnn_model, lgbm_model, tmp_path):
+    from inference_runner import ClassifierService
+    from predictors import ENSEMBLE_FORMAT
+    schema_path = os.path.splitext(lgbm_model)[0] + '_features.json'
+    schema = json.load(open(schema_path))
+    schema['image_size'] = 64
+    json.dump(schema, open(schema_path, 'w'))
+    path = tmp_path / 'models' / 'bad_ensemble.json'
+    path.write_text(json.dumps({'format': ENSEMBLE_FORMAT,
+                                'members': [{'model': 'cnn.keras'}, {'model': 'lgbm.txt'}]}))
+    with pytest.raises(ValueError, match='image size'):
+        ClassifierService(str(path))
+
+
 def test_parse_member():
     import evaluate_v2
     assert evaluate_v2.parse_member('models/a.keras') == ('models/a.keras', 1.0)
