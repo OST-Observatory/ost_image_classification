@@ -249,3 +249,6 @@ def test_diagnose_compare(small_cache, lgbm_model, tmp_path):
     assert summary['cache_vs_archive_top_differ'] == 0  # same inputs on both sides
     assert summary['manual_label_changed_since_export'] == 0
     assert summary['manual_by_status']['not_in_export'] == {'n': 1, 'top_class_wrong': 1}
+    assert summary['unseen_manual']['n'] == 1 + summary['manual_by_status'].get('test', {'n': 0})['n']
+    wrong = {entry['run_dir']: entry for entry in summary['wrong_runs']}
+    assert wrong['not']['cached'] == 0 and wrong['not']['unreadable'] == 0

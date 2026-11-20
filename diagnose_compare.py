@@ -31,6 +31,25 @@ def relative(path, prefix):
     return path[len(prefix):] if prefix and path.startswith(prefix) else path
 
 
+def run_dir(path):
+    """First path component of a relative archive path (the run directory, e.g. '2015-10-02')."""
+    return path.strip('/').split('/')[0]
+
+
+def run_coverage(index, errors):
+    """Per run directory: files in the cache by split and by label, and files unreadable when building it."""
+    coverage = defaultdict(lambda: {'cached': 0, 'splits': Counter(), 'labels': Counter(), 'unreadable': 0})
+    for meta in index.meta:
+        for path, split, label in zip(meta['paths'], meta['splits'], meta['labels']):
+            entry = coverage[run_dir(path)]
+            entry['cached'] += 1
+            entry['splits'][split] += 1
+            entry['labels'][index.classes[label]] += 1
+    for path in errors:
+        coverage[run_dir(path)]['unreadable'] += 1
+    return coverage
+
+
 def load_errors(cache_dir):
     path = os.path.join(cache_dir, 'errors.jsonl')
     if not os.path.exists(path):
@@ -64,9 +83,9 @@ def diagnose(rows, index, predictor, errors, prefix):
     files = []
     for r in rows:
         rel = relative(r['path'], prefix)
-        files.append({'path': r['path'], 'run': r.get('run'), 'manual': r.get('user') or '',
-                      'archive_top': r.get('new_top_class') or '', 'status': 'not_in_export',
-                      'cache_error': errors.get(rel)})
+        files.append({'path': r['path'], 'run': r.get('run'), 'run_dir': run_dir(rel), 'manual': r.get('user') or '',
+                      'archive_top': r.get('new_top_class') or '', 'old_ml': r.get('old_ml') or '',
+                      'status': 'not_in_export', 'cache_error': errors.get(rel)})
         if rel in errors:
             files[-1]['status'] = 'unreadable_in_cache'
     by_path = {f['path']: f for f in files}
@@ -75,7 +94,7 @@ def diagnose(rows, index, predictor, errors, prefix):
     return files
 
 
-def summarize(files, examples=3):
+def summarize(files, coverage=None, examples=3):
     expo = features.CLASS_EXPOSURE
     cached = [f for f in files if 'cache_top' in f]
     differ = [f for f in cached if f['cache_top'] != f['archive_top']]
@@ -90,11 +109,27 @@ def summarize(files, examples=3):
         stats, wrong = errors_of([f for f in manual if f['status'] == status])
         by_status[status] = stats
         for f in wrong:
-            key = f"{f['run']} ({f['status']})"
+            key = f['run_dir']
             wrong_runs[key] += 1
             if len(run_examples[key]) < examples:
-                run_examples[key].append(f"{os.path.basename(f['path'])}  ({f['manual']} -> {f['archive_top']})")
+                run_examples[key].append(f"{os.path.basename(f['path'])}  ({f['manual']} -> {f['archive_top']}, "
+                                         f"{f['status']})")
     relabelled = [f for f in manual if 'cache_label' in f and expo.get(f['cache_label']) != f['manual']]
+    # files the new model was not trained on: test split and files not in the export
+    unseen = [f for f in manual if f['status'] in ('test', 'not_in_export')]
+    old_ran = [f for f in unseen if f['old_ml'] not in ('', '-')]
+
+    def share(subset, correct):
+        return round(sum(map(correct, subset)) / len(subset), 4) if subset else None
+
+    def run_entry(key, n):
+        entry = {'run_dir': key, 'n': n, 'examples': run_examples[key]}
+        if coverage is not None:
+            c = coverage.get(key, {'cached': 0, 'splits': {}, 'labels': {}, 'unreadable': 0})
+            entry.update(cached=c['cached'], splits=dict(c['splits']), labels=dict(c['labels']),
+                         unreadable=c['unreadable'])
+        return entry
+
     return {
         'files': len(files),
         'status': dict(Counter(f['status'] for f in files)),
@@ -104,7 +139,14 @@ def summarize(files, examples=3):
                             for f in differ[:10]],
         'manual_by_status': by_status,
         'manual_label_changed_since_export': len(relabelled),
-        'wrong_runs': [{'run': key, 'n': n, 'examples': run_examples[key]} for key, n in wrong_runs.most_common(15)],
+        'unseen_manual': {
+            'n': len(unseen),
+            'new_top_class_correct': share(unseen, lambda f: expo.get(f['archive_top']) == f['manual']),
+            'old_n': len(old_ran),
+            'old_correct': share(old_ran, lambda f: f['old_ml'] == f['manual']),
+            'new_correct_same_files': share(old_ran, lambda f: expo.get(f['archive_top']) == f['manual']),
+        },
+        'wrong_runs': [run_entry(key, n) for key, n in wrong_runs.most_common(15)],
     }
 
 
@@ -121,8 +163,9 @@ def main(argv=None):
         rows = json.load(f)['files']
     index = CacheIndex(args.cache)
     predictor, _ = load_predictor(args.model)
-    files = diagnose(rows, index, predictor, load_errors(args.cache), args.archive_prefix)
-    summary = summarize(files)
+    errors = load_errors(args.cache)
+    files = diagnose(rows, index, predictor, errors, args.archive_prefix)
+    summary = summarize(files, run_coverage(index, errors))
 
     print(f"{summary['files']} compared files: " + ', '.join(f'{k} {v}' for k, v in sorted(summary['status'].items())))
     print(f"In the cache: {summary['cached']}; cache top class != archive top class: "
@@ -133,9 +176,15 @@ def main(argv=None):
     for status, stats in summary['manual_by_status'].items():
         print(f"    {status:<20} {stats['top_class_wrong']:>4} / {stats['n']}")
     print(f"Manual label changed since the export: {summary['manual_label_changed_since_export']}")
-    print('\nRuns with most wrong top classes (manual label -> archive top class):')
+    u = summary['unseen_manual']
+    print(f"\nNot trained on (test + not in export, manual label): n={u['n']}, new top class correct "
+          f"{u['new_top_class_correct']}; on the {u['old_n']} files the old model classified: old {u['old_correct']}, "
+          f"new {u['new_correct_same_files']} (the old model may have been trained on them)")
+    print('\nRuns with most wrong top classes (manual label -> archive top class, status);')
+    print('  cache: files of the run directory in the cache by split and label, unreadable when building it')
     for entry in summary['wrong_runs']:
-        print(f"    {entry['run']}: {entry['n']}")
+        print(f"    {entry['run_dir']}: {entry['n']} wrong | cache {entry.get('cached', '-')} "
+              f"{entry.get('splits', '')} {entry.get('labels', '')} unreadable {entry.get('unreadable', '-')}")
         for example in entry['examples']:
             print(f'        {example}')
     if args.out:
