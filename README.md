@@ -126,6 +126,12 @@ members need the `lightgbm` package). `ClassifierService` recognises v2 models b
 accepts per-file archive metadata (`predict_paths(paths, metadata={path: {"instrument", "plate_solved",
 "run_spectroscopy"}})`) and returns `top_class`/`top_score` also when abstaining. Tests: `pytest`.
 
+Before a rollout, compare the new model with the stored classification in the archive
+(`classify_exposure_types --compare --sample 1000 --json compare.json`, saves nothing). `diagnose_compare.py`
+checks that comparison on the training machine: which compared files are in the cache (split, label at export
+time), unreadable in the cache or not exported, and whether the cache gives the same top class as the archive
+(same inputs on both machines).
+
 Measured locally (synthetic data, 448 px): cache build 0.3 GB, CNN training with batch 16 3.3 GB peak memory.
 
 ## Training Workflow (legacy pipeline)

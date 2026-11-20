@@ -63,6 +63,7 @@ py-modules = [
     "train",
     "train_tabular",
     "evaluate_v2",
+    "diagnose_compare",
 ]
 
 [tool.setuptools.package-data]

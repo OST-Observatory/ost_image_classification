@@ -226,3 +226,26 @@ def test_thresholds_fitted_on_top_class_files():
     thresholds = evaluate_v2.fit_thresholds(proba, labels, classes, target_precision=0.95)
     assert thresholds['deep_sky'] == pytest.approx(0.6)  # 0.55 (a bias file) is excluded
     assert thresholds['bias'] == pytest.approx(0.8)
+
+
+def test_diagnose_compare(small_cache, lgbm_model, tmp_path):
+    import diagnose_compare
+    from inference_runner import ClassifierService
+    records = small_cache['records'][:4]
+    prefix = small_cache['archive'] + '/'
+    paths = [prefix + r['path'] for r in records]
+    service = ClassifierService(lgbm_model, temperature=1.0)
+    results = service.predict_paths(paths, batch_size=4)['results']
+    rows = [{'path': r['path'], 'run': 'r1', 'user': features.CLASS_EXPOSURE[rec['class']],
+             'new_top_class': r['top_class']} for r, rec in zip(results, records)]
+    rows.append({'path': prefix + 'not/exported.fit', 'run': 'r2', 'user': 'LI', 'new_top_class': 'darks'})
+    compare = tmp_path / 'compare.json'
+    compare.write_text(json.dumps({'files': rows}))
+    out = tmp_path / 'diagnose.json'
+    diagnose_compare.main(['--cache', small_cache['cache'], '--model', lgbm_model, '--compare', str(compare),
+                           '--archive_prefix', prefix, '--out', str(out)])
+    summary = json.loads(out.read_text())['summary']
+    assert summary['cached'] == 4 and summary['status']['not_in_export'] == 1
+    assert summary['cache_vs_archive_top_differ'] == 0  # same inputs on both sides
+    assert summary['manual_label_changed_since_export'] == 0
+    assert summary['manual_by_status']['not_in_export'] == {'n': 1, 'top_class_wrong': 1}
