@@ -110,6 +110,8 @@ python evaluate_v2.py --cache /mnt/raid/classifier_cache/v2_448 \
     --out reports/eval_v2.json --save_calibration \
     --exclude_paths cnn_training_data.json   # files the legacy model was trained on: fair comparison
 ```
+`--ensemble MODEL[=WEIGHT] MODEL[=WEIGHT] ...` evaluates the weighted mean of the class probabilities of
+several v2 models (own temperature and thresholds, fitted on val); repeatable for several combinations.
 Besides overall accuracy the evaluation reports a run-weighted accuracy (every run counts equally) and the
 runs with the most errors, with example files. The export caps files per run and class (`--max-per-run`,
 default 500), so a single large capture series cannot dominate a split.

@@ -178,6 +178,16 @@ def evaluate_split(proba, index, selection, labels, classes, thresholds):
     }
 
 
+def parse_member(spec):
+    """'model.keras' or 'model.keras=0.6' -> (path, weight)."""
+    path, _, weight = spec.rpartition('=') if '=' in spec else (spec, '', '1')
+    return path, float(weight)
+
+
+def ensemble_name(members):
+    return 'ensemble(' + ' + '.join(f'{os.path.basename(p)}*{w:g}' for p, w in members) + ')'
+
+
 def load_paths(path):
     """Relative file paths of an export (v2: {'files': [{'path'}]}, v1: {split: {class: [paths]}})."""
     with open(path) as f:
@@ -197,6 +207,9 @@ def main(argv=None):
     parser.add_argument('--split', default='test')
     parser.add_argument('--target_precision', type=float, default=0.95)
     parser.add_argument('--out', required=True, help='Report JSON')
+    parser.add_argument('--ensemble', action='append', nargs='+', default=[], metavar='MODEL[=WEIGHT]',
+                        help='Evaluate the weighted mean of the class probabilities of these v2 models (same classes); '
+                             'repeatable for several ensembles, e.g. --ensemble cnn.keras lgbm.txt')
     parser.add_argument('--exclude_paths', action='append', default=[],
                         help='Export JSON (v1 or v2) whose files are removed from the test split for all models, '
                              'e.g. the legacy training data cnn_training_data.json (repeatable)')
@@ -215,34 +228,54 @@ def main(argv=None):
         print(f'Excluded {before - len(test_sel)} of {before} test files listed in {", ".join(args.exclude_paths)}')
     report = {'cache': args.cache, 'split': args.split, 'excluded_test_files': args.exclude_paths, 'models': {}}
 
-    for model_path in args.model:
-        schema = load_schema(model_path)
-        if schema is None:
-            raise SystemExit(f'{model_path} has no schema file; use --legacy_model for legacy models')
-        predictor = V2Predictor(model_path, schema)
-        classes = predictor.classes
-        to_target = None
-        if schema.get('target') == 'exposure':
-            mapping = np.array([features.EXPOSURE_TYPES.index(features.CLASS_EXPOSURE[c]) for c in index.classes])
-            to_target = mapping
+    predictions = {}
+
+    def predict(model_path):
+        """(schema, classes, raw val probabilities, raw test probabilities), each model predicted only once."""
+        if model_path not in predictions:
+            schema = load_schema(model_path)
+            if schema is None:
+                raise SystemExit(f'{model_path} has no schema file; use --legacy_model for legacy models')
+            predictor = V2Predictor(model_path, schema)
+            predictions[model_path] = (schema, predictor.classes, predict_v2(predictor, index, val_sel),
+                                       predict_v2(predictor, index, test_sel))
+        return predictions[model_path]
+
+    def evaluate(name, kind, classes, raw_val, raw_test, target=None):
         y_val, y_test = index.labels(val_sel), index.labels(test_sel)
-        if to_target is not None:
-            y_val, y_test = to_target[y_val], to_target[y_test]
-        raw_val = predict_v2(predictor, index, val_sel)
+        if target == 'exposure':
+            mapping = np.array([features.EXPOSURE_TYPES.index(features.CLASS_EXPOSURE[c]) for c in index.classes])
+            y_val, y_test = mapping[y_val], mapping[y_test]
         temperature = fit_temperature(raw_val, y_val)
-        p_val = apply_temperature(raw_val, temperature)
-        thresholds = fit_thresholds(p_val, y_val, classes, args.target_precision)
-        p_test = apply_temperature(predict_v2(predictor, index, test_sel), temperature)
-        report['models'][model_path] = {
-            'kind': schema['kind'], 'temperature': temperature, 'thresholds': thresholds,
-            **evaluate_split(p_test, index, test_sel, y_test, classes, thresholds),
+        thresholds = fit_thresholds(apply_temperature(raw_val, temperature), y_val, classes, args.target_precision)
+        report['models'][name] = {
+            'kind': kind, 'temperature': temperature, 'thresholds': thresholds,
+            **evaluate_split(apply_temperature(raw_test, temperature), index, test_sel, y_test, classes, thresholds),
         }
+        return temperature, thresholds
+
+    for model_path in args.model:
+        schema, classes, raw_val, raw_test = predict(model_path)
+        temperature, thresholds = evaluate(model_path, schema['kind'], classes, raw_val, raw_test, schema.get('target'))
         if args.save_calibration:
             stem = os.path.splitext(model_path)[0]
             with open(stem + '_thresholds.json', 'w') as f:
                 json.dump(thresholds, f, indent=1)
             with open(stem + '_calibration.json', 'w') as f:
                 json.dump({'temperature': temperature, 'target_precision': args.target_precision}, f, indent=1)
+
+    for specs in args.ensemble:
+        members = [parse_member(spec) for spec in specs]
+        outputs = [predict(path) for path, _ in members]
+        classes = outputs[0][1]
+        if any(out[1] != classes or out[0].get('target', 'class') != 'class' for out in outputs):
+            raise SystemExit('Ensemble members must predict the same classes (target "class")')
+        weights = np.array([w for _, w in members], dtype=np.float64)
+        weights /= weights.sum()
+        raw_val = sum(w * out[2] for w, out in zip(weights, outputs))
+        raw_test = sum(w * out[3] for w, out in zip(weights, outputs))
+        evaluate(ensemble_name(members), 'ensemble', classes, raw_val, raw_test)
+        report['models'][ensemble_name(members)]['members'] = {p: float(w) for (p, _), w in zip(members, weights)}
 
     if args.legacy_model:
         paths = index.column(test_sel, 'paths')

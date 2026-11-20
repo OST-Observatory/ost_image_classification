@@ -121,3 +121,21 @@ def test_evaluate_excludes_paths(small_cache, lgbm_model, tmp_path):
     evaluate_v2.main(['--cache', small_cache['cache'], '--model', lgbm_model, '--out', str(out),
                       '--exclude_paths', str(legacy_export)])
     assert json.loads(out.read_text())['models'][lgbm_model]['all']['n'] == 9 - 4
+
+
+def test_evaluate_ensemble(small_cache, cnn_model, lgbm_model, tmp_path):
+    import evaluate_v2
+    out = tmp_path / 'report.json'
+    evaluate_v2.main(['--cache', small_cache['cache'], '--model', lgbm_model,
+                      '--ensemble', cnn_model, f'{lgbm_model}=3', '--out', str(out)])
+    models = json.loads(out.read_text())['models']
+    name = next(n for n in models if n.startswith('ensemble('))
+    assert models[name]['members'] == {cnn_model: 0.25, lgbm_model: 0.75}
+    assert models[name]['all']['n'] == 9 and 'run_accuracy' in models[name]['all']
+    assert lgbm_model in models
+
+
+def test_parse_member():
+    import evaluate_v2
+    assert evaluate_v2.parse_member('models/a.keras') == ('models/a.keras', 1.0)
+    assert evaluate_v2.parse_member('models/b.txt=0.6') == ('models/b.txt', 0.6)
