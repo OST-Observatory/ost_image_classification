@@ -188,6 +188,14 @@ def test_ensemble_rejects_mismatching_members(small_cache, cnn_model, lgbm_model
         ClassifierService(str(path))
 
 
+def test_other_json_is_rejected(tmp_path):
+    from inference_runner import ClassifierService
+    report = tmp_path / 'eval_v2b_ensemble.json'
+    report.write_text(json.dumps({'cache': 'x', 'models': {}}))
+    with pytest.raises(ValueError, match='not an ensemble file'):
+        ClassifierService(str(report))
+
+
 def test_parse_member():
     import evaluate_v2
     assert evaluate_v2.parse_member('models/a.keras') == ('models/a.keras', 1.0)

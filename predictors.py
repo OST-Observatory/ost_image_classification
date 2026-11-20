@@ -123,6 +123,11 @@ def load_predictor(model_path, tta=False):
         return EnsemblePredictor(model_path, config, tta=tta), calibration
     schema = load_schema(model_path)
     if schema is None:
+        if str(model_path).lower().endswith('.json'):
+            raise ValueError(
+                f'{model_path} is not an ensemble file (expected "format": "{ENSEMBLE_FORMAT}"; written by '
+                'evaluate_v2.py --save_calibration as <stem>+<stem>_ensemble.json, not the --out report)'
+            )
         return None, None
     stem = os.path.splitext(model_path)[0]
     calibration = {}
