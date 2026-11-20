@@ -29,12 +29,19 @@ def softmax_with_temperature(probs: np.ndarray, temperature: float) -> np.ndarra
 def apply_thresholds(proba: np.ndarray,
                      thresholds: np.ndarray,
                      abstain: bool,
-                     unknown_id: int) -> Tuple[np.ndarray, np.ndarray]:
+                     unknown_id: int,
+                     top_class_only: bool = False) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Returns (pred_labels, abstained_mask)
+    Returns (pred_labels, abstained_mask).
+
+    ``top_class_only`` (v2 models and ensembles): the top class if it reaches its threshold, else abstain.
+    Otherwise (legacy rule, kept for the legacy model): the most probable class among all classes reaching
+    their threshold, so a class with a very low threshold can win with a tiny probability.
     """
     pass_mask = proba >= thresholds.reshape((1, -1))
     top_idx = np.argmax(proba, axis=1)
+    if top_class_only:
+        pass_mask = pass_mask & (np.arange(proba.shape[1])[None, :] == top_idx[:, None])
     pred = []
     abstained = []
     for i in range(proba.shape[0]):
@@ -275,7 +282,8 @@ class ClassifierService:
             # Temperature scaling
             proba = softmax_with_temperature(probs=proba, temperature=self.temperature)
             # Threshold gating
-            pred_labels, abstained = apply_thresholds(proba, self.thresholds, self.abstain_unknown, self.unknown_id)
+            pred_labels, abstained = apply_thresholds(proba, self.thresholds, self.abstain_unknown, self.unknown_id,
+                                                      top_class_only=self.v2 is not None)
             for j, pth in enumerate(ok_paths):
                 top_idx = int(np.argmax(proba[j]))
                 score = float(proba[j, top_idx])

@@ -120,7 +120,7 @@ def _block_mean(data, factor, scale=1.0, zero=0.0):
     out = np.empty((h // factor, w // factor), dtype=np.float32)
     rows = max(1, 2048 // factor) * factor
     for start in range(0, h, rows):
-        block = np.asarray(data[start:start + rows, :w], dtype=np.float32)
+        block = np.asarray(data[start:min(start + rows, h), :w], dtype=np.float32)  # rows beyond h are cropped
         n = block.shape[0] // factor
         out[start // factor:start // factor + n] = block.reshape(n, factor, w // factor, factor).mean(axis=(1, 3))
     return out * scale + zero

@@ -75,3 +75,22 @@ def test_unreadable_file(tmp_path):
     bad.write_bytes(b'not a fits file')
     with pytest.raises(Exception):
         features.extract(str(bad))
+
+
+@pytest.mark.parametrize('shape', [(1148, 1500), (2105, 3140), (7, 9)])
+def test_block_mean_crops_rows_not_divisible_by_factor(shape):
+    data = np.arange(shape[0] * shape[1], dtype=np.float32).reshape(shape)
+    factor = 3 if shape[0] < 2000 else 2
+    reduced = features._block_mean(data, factor)
+    h, w = shape[0] // factor, shape[1] // factor
+    assert reduced.shape == (h, w)
+    expected = data[:h * factor, :w * factor].reshape(h, factor, w, factor).mean(axis=(1, 3))
+    assert np.allclose(reduced, expected)
+
+
+def test_large_frame_with_odd_height(tmp_path):
+    from astropy.io import fits
+    path = tmp_path / 'qhy.fit'
+    fits.writeto(path, np.random.default_rng(0).integers(0, 4000, (1148, 4788)).astype(np.uint16))
+    image, vector = features.extract(str(path), image_size=32)
+    assert image.shape == (32, 32) and len(vector) == len(features.FEATURE_NAMES)

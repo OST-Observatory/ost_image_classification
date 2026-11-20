@@ -200,3 +200,29 @@ def test_parse_member():
     import evaluate_v2
     assert evaluate_v2.parse_member('models/a.keras') == ('models/a.keras', 1.0)
     assert evaluate_v2.parse_member('models/b.txt=0.6') == ('models/b.txt', 0.6)
+
+
+def test_top_class_gating():
+    from inference_runner import apply_thresholds
+    import evaluate_v2
+    classes = ['deep_sky', 'bias', 'flats']
+    proba = np.array([[0.55, 0.002, 0.448],   # top class misses its threshold -> abstain, not bias
+                      [0.90, 0.05, 0.05],
+                      [0.10, 0.05, 0.85]])
+    thresholds = {'deep_sky': 0.6, 'bias': 0.001, 'flats': 0.9}
+    thr = np.array([thresholds[c] for c in classes])
+    pred, abstained = apply_thresholds(proba, thr, True, 3, top_class_only=True)
+    assert pred.tolist() == [3, 0, 3] and abstained.tolist() == [True, False, True]
+    assert evaluate_v2.gate(proba, thresholds, classes).tolist() == [-1, 0, -1]
+    legacy, _ = apply_thresholds(proba, thr, True, 3)  # legacy rule unchanged
+    assert legacy.tolist() == [1, 0, 1]
+
+
+def test_thresholds_fitted_on_top_class_files():
+    import evaluate_v2
+    classes = ['deep_sky', 'bias']
+    proba = np.array([[0.9, 0.1], [0.6, 0.4], [0.55, 0.45], [0.2, 0.8]])
+    labels = np.array([0, 0, 1, 1])
+    thresholds = evaluate_v2.fit_thresholds(proba, labels, classes, target_precision=0.95)
+    assert thresholds['deep_sky'] == pytest.approx(0.6)  # 0.55 (a bias file) is excluded
+    assert thresholds['bias'] == pytest.approx(0.8)

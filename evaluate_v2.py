@@ -40,15 +40,23 @@ def fit_temperature(proba, labels):
 
 
 def fit_thresholds(proba, labels, classes, target_precision):
-    """Per class: lowest threshold reaching the target precision on val, else the max-F1 threshold."""
+    """
+    Per class, for the files where it is the top class (the decision rule of ``gate``): lowest threshold
+    reaching the target precision on val, else the max-F1 threshold; 0.5 if the class is never top or never right.
+    """
     from sklearn.metrics import precision_recall_curve
+    top = proba.argmax(axis=1)
     thresholds = {}
     for c, name in enumerate(classes):
-        positives = labels == c
+        candidates = top == c
+        positives = labels[candidates] == c
         if not positives.any():
             thresholds[name] = 0.5
             continue
-        precision, recall, thr = precision_recall_curve(positives, proba[:, c])
+        if positives.all():
+            thresholds[name] = float(proba[candidates, c].min())
+            continue
+        precision, recall, thr = precision_recall_curve(positives, proba[candidates, c])
         precision, recall = precision[:-1], recall[:-1]
         ok = np.flatnonzero(precision >= target_precision)
         if ok.size:
@@ -60,11 +68,10 @@ def fit_thresholds(proba, labels, classes, target_precision):
 
 
 def gate(proba, thresholds, classes):
-    """Highest class passing its threshold; -1 (abstain) if none passes."""
+    """Top class if it reaches its threshold, else -1 (abstain); as ClassifierService for v2 models."""
     thr = np.array([thresholds.get(name, 0.5) for name in classes])
-    passing = np.where(proba >= thr[None, :], proba, -1.0)
-    pred = passing.argmax(axis=1)
-    pred[passing.max(axis=1) < 0] = -1
+    pred = proba.argmax(axis=1)
+    pred[proba[np.arange(len(pred)), pred] < thr[pred]] = -1
     return pred
 
 
@@ -330,7 +337,7 @@ def main(argv=None):
         print(f"{os.path.basename(name):<48} {a['n']:>6} {a['accuracy']:>7} {a.get('run_accuracy', '-'):>8} "
               f"{h.get('accuracy', '-'):>7} {a['exposure_accuracy']:>7} {a['exposure_errors'].get('LI -> DA', 0):>7} "
               f"{a['exposure_errors'].get('DA -> LI', 0):>7} {a['ece']:>6} {a.get('coverage', '-'):>6} "
-              f"{a.get('accuracy_at_coverage', '-'):>8}")
+              f"{str(a.get('accuracy_at_coverage', '-')):>8}")  # None if the model abstained on every file
     for name, result in report['models'].items():
         print(f"\nRuns with most errors: {os.path.basename(name)}")
         for entry in result['all'].get('worst_runs', [])[:5]:
