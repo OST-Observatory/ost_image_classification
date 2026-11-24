@@ -119,8 +119,9 @@ runs with the most errors, with example files. The export caps files per run and
 default 500), so a single large capture series cannot dominate a split.
 
 Deploying a v2 model needs `<model>`, `<model>_features.json`, `<model>_thresholds.json` and
-`<model>_calibration.json` in one directory; an ensemble additionally needs its `_ensemble.json` and all
-members with their files. `ClassifierService(model_path)` accepts a v2 model or an ensemble file and uses the
+`<model>_calibration.json` in one directory (written by `evaluate_v2.py --model ... --save_calibration`); an
+ensemble needs its `_ensemble.json` (contains temperature and thresholds) plus every member with its
+`_features.json` in the same directory. `ClassifierService(model_path)` accepts a v2 model or an ensemble file and uses the
 saved temperature and thresholds unless `temperature`/`thresholds_path` are given explicitly (LightGBM
 members need the `lightgbm` package). `ClassifierService` recognises v2 models by the schema file,
 accepts per-file archive metadata (`predict_paths(paths, metadata={path: {"instrument", "plate_solved",

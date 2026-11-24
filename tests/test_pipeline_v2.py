@@ -252,3 +252,7 @@ def test_diagnose_compare(small_cache, lgbm_model, tmp_path):
     assert summary['unseen_manual']['n'] == 1 + summary['manual_by_status'].get('test', {'n': 0})['n']
     wrong = {entry['run_dir']: entry for entry in summary['wrong_runs']}
     assert wrong['not']['cached'] == 0 and wrong['not']['unreadable'] == 0
+    # wrong prefix: the archive root is inferred from the cache paths
+    diagnose_compare.main(['--cache', small_cache['cache'], '--model', lgbm_model, '--compare', str(compare),
+                           '--archive_prefix', '/wrong/', '--out', str(out)])
+    assert json.loads(out.read_text())['summary']['cached'] == 4

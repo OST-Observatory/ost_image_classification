@@ -28,7 +28,18 @@ UNKNOWN = 'UK'
 
 
 def relative(path, prefix):
-    return path[len(prefix):] if prefix and path.startswith(prefix) else path
+    rel = path[len(prefix):] if prefix and path.startswith(prefix) else path
+    return rel.lstrip('/')
+
+
+def infer_prefix(paths, known):
+    """Archive root of the compare paths: the part before the longest suffix found among the cache paths."""
+    for path in paths:
+        parts = path.strip('/').split('/')
+        for i in range(1, len(parts)):
+            if '/'.join(parts[i:]) in known:
+                return path[:len(path) - len('/'.join(parts[i:]))]
+    return ''
 
 
 def run_dir(path):
@@ -73,6 +84,11 @@ def diagnose(rows, index, predictor, errors, prefix):
     for shard, meta in enumerate(index.meta):
         for row, path in enumerate(meta['paths']):
             position[path] = (shard, row)
+    if not any(relative(r['path'], prefix) in position or relative(r['path'], prefix) in errors for r in rows):
+        inferred = infer_prefix([r['path'] for r in rows], set(position) | set(errors))
+        if inferred:
+            print(f'Archive prefix {prefix!r} matches no cached file; using {inferred!r}')
+            prefix = inferred
 
     in_cache = [r for r in rows if relative(r['path'], prefix) in position]
     selection = [position[relative(r['path'], prefix)] for r in in_cache]
@@ -166,6 +182,9 @@ def main(argv=None):
     errors = load_errors(args.cache)
     files = diagnose(rows, index, predictor, errors, args.archive_prefix)
     summary = summarize(files, run_coverage(index, errors))
+    if not summary['cached'] and not summary['status'].get('unreadable_in_cache'):
+        print('WARNING: no compared file was found in the cache (wrong --archive_prefix or another cache?); '
+              '"not trained on" then includes training files')
 
     print(f"{summary['files']} compared files: " + ', '.join(f'{k} {v}' for k, v in sorted(summary['status'].items())))
     print(f"In the cache: {summary['cached']}; cache top class != archive top class: "
